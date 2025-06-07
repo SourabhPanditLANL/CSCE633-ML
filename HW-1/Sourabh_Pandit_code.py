@@ -83,6 +83,89 @@ class DataProcessor:
         # TODO: Implement feature/label extraction
         return (data.columns[:-1], data.columns[-1])
 
+
+    def get_pearson_corr(self, data: pd.DataFrame) -> None:
+        """Return Pearson correlation coefficient for two features
+
+        Args:
+            data: Input dataframe
+            features1_idx: index for features 1
+            features2_idx: index for features 2
+
+        Returns:
+            returns nothing
+        """
+
+        # Pearson's correlation matrix
+        corr_matrix = data.corr(method='pearson')
+        plt.figure(figsize=(12, 10))
+
+        sns.heatmap(
+            corr_matrix,
+            annot=True,            # show correlation coefficients
+            fmt=".2f",             # format to 2 decimal places
+            cmap="coolwarm",       # color gradient from blue (low) to red (high)
+            square=True,           # square cells
+            linewidths=0.5,        # thin lines between cells
+            cbar_kws={"shrink": .75}  # shrink colorbar size
+        )
+
+        plt.title("Pearson Correlation Heatmap", fontsize=16)
+        plt.xticks(rotation=45, ha='right')
+        plt.yticks(rotation=0)
+        plt.tight_layout()
+        plt.show()
+
+    def draw_histogram(self, data: pd.DataFrame) -> None:
+        """Draw histogram for all features and the target variable
+
+        Args:
+            data: Input dataframe
+
+        Returns:
+            returns Nothing
+        """
+        fig, axes = plt.subplots(nrows=4, ncols=3, figsize=(15, 12))  # 4 rows x 3 columns
+        axes = axes.flatten()  # Flatten to 1D array for easy indexing
+
+        for i, feature in enumerate(data.columns):
+            print (f"FEATURE: {feature}")
+            axes[i].hist(data[feature], bins=20, edgecolor='black')  # Drop NaNs for clean hist
+            axes[i].set_title(f'Histogram of {feature}')
+            axes[i].set_xlabel(feature)
+            axes[i].set_ylabel('Frequency')
+            # Turn off any extra subplots (only 11 used out of 12)
+
+        plt.tight_layout()
+        plt.savefig("features_histogram.png", dpi=300, bbox_inches='tight')
+        plt.show()
+
+    def draw_scatter_plot(self, data: pd.DataFrame, feature1_idx: int, feature2_idx: int) -> None:
+        """Extract features and labels from dataframe, convert to numpy arrays.
+
+        Args:
+            data: Input dataframe
+            features1_idx: index for features 1
+            features2_idx: index for features 2
+
+        Returns:
+            returns Nothing
+        """
+        x_feature = data.columns[feature1_idx]
+        y_feature = data.columns[feature2_idx]
+
+        plt.figure(figsize=(8, 6))
+        plt.scatter(data[x_feature], data[y_feature], alpha=0.6, edgecolors='k')
+
+        plt.xlabel(x_feature)
+        plt.ylabel(y_feature)
+        plt.title(f'Scatter Plot: {x_feature} vs {y_feature}')
+        plt.grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+
 class LinearRegression:
     def __init__(self):
         """Initialize linear regression model.
@@ -280,35 +363,16 @@ def main():
 
     (df_train, df_test) = dp.load_data()
 
-    num_missing_train = dp.check_missing_values(df_train)
+    num_missing_data = dp.check_missing_values(df_train)
 
-    if num_missing_train > 0:
+    if num_missing_data > 0:
         dp.clean_data(df_train)
 
     (features, label) = dp.extract_features_labels(df_train)
 
-    fig, axes = plt.subplots(nrows=4, ncols=3, figsize=(15, 12))  # 4 rows x 3 columns
-    axes = axes.flatten()  # Flatten to 1D array for easy indexing
-
-    # Plot each feature
-    nfeatures = features
-    #nfeatures.append(label)
-    print (f"Type: {type(nfeatures)}")
-    print (f": {nfeatures}")
-    print (f"Type: {type(label)}")
-    print (f": {label}")
-
-    for i, feature in enumerate(df_train.columns):
-        print (f"FEATURE: {feature}")
-        axes[i].hist(df_train[feature], bins=20, edgecolor='black')  # Drop NaNs for clean hist
-        axes[i].set_title(f'Histogram of {feature}')
-        axes[i].set_xlabel(feature)
-        axes[i].set_ylabel('Frequency')
-        # Turn off any extra subplots (only 11 used out of 12)
-
-    plt.tight_layout()
-    plt.savefig("features_histogram.png", dpi=300, bbox_inches='tight')
-    plt.show()
+    #dp.draw_histogram(df_train)
+    #are_correlated = dp.draw_scatter_plot(df_train, 2, 7)
+    dp.get_pearson_corr(df_train)
 
 
     print("Hello World! ..... ")
@@ -316,8 +380,8 @@ def main():
     print(f"Data dir: {dp.data_root}")
     print (df_train.head())
     print (df_test.head())
-    print(f"#Missing Vals = {num_missing_train}")
-    print(f"#Missing Vals = {num_missing_train}")
+    print(f"#Missing Vals = {num_missing_data}")
+    print(f"#Missing Vals = {num_missing_data}")
     print(f"Features: {features}\t label: {label}")
     '''
 

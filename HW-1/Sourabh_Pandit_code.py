@@ -37,8 +37,8 @@ class DataProcessor:
             Tuple containing training and test dataframes
         """
         # TODO: Implement data loading
-        train_data_csv = self.data_root +"/" + "data_train_25s.csv"
-        test_data_csv = self.data_root +"/" + "data_test_25s.csv"
+        train_data_csv = self.data_root + "/" + "data_train_25s.csv"
+        test_data_csv = self.data_root  + "/" + "data_test_25s.csv"
 
         df_train = pd.read_csv(train_data_csv)
         df_test = pd.read_csv(test_data_csv)
@@ -67,7 +67,6 @@ class DataProcessor:
             Cleaned dataframe
         """
         # TODO: Implement data cleaning
-        #print (f"Shape: {data.shape}")
         data.dropna(inplace=True)
         return data
 
@@ -102,18 +101,19 @@ class DataProcessor:
 
         sns.heatmap(
             corr_matrix,
-            annot=True,            # show correlation coefficients
-            fmt=".2f",             # format to 2 decimal places
-            cmap="coolwarm",       # color gradient from blue (low) to red (high)
-            square=True,           # square cells
-            linewidths=0.5,        # thin lines between cells
-            cbar_kws={"shrink": .75}  # shrink colorbar size
+            annot=True,
+            fmt=".2f",
+            cmap="coolwarm",
+            square=True,
+            linewidths=0.5,
+            cbar_kws={"shrink": .75}
         )
 
         plt.title("Pearson Correlation Heatmap", fontsize=16)
         plt.xticks(rotation=45, ha='right')
         plt.yticks(rotation=0)
         plt.tight_layout()
+        plt.savefig("feature_heatmap.png", dpi=300, bbox_inches='tight')
         plt.show()
 
     def draw_histogram(self, data: pd.DataFrame) -> None:
@@ -134,7 +134,6 @@ class DataProcessor:
             axes[i].set_title(f'Histogram of {feature}')
             axes[i].set_xlabel(feature)
             axes[i].set_ylabel('Frequency')
-            # Turn off any extra subplots (only 11 used out of 12)
 
         plt.tight_layout()
         plt.savefig("features_histogram.png", dpi=300, bbox_inches='tight')
@@ -151,18 +150,19 @@ class DataProcessor:
         Returns:
             returns Nothing
         """
-        x_feature = data.columns[feature1_idx]
+        feature1 = data.columns[feature1_idx]
         y_feature = data.columns[feature2_idx]
 
         plt.figure(figsize=(8, 6))
-        plt.scatter(data[x_feature], data[y_feature], alpha=0.6, edgecolors='k')
+        plt.scatter(data[feature1], data[y_feature], alpha=0.6, edgecolors='k')
 
-        plt.xlabel(x_feature)
+        plt.xlabel(feature1)
         plt.ylabel(y_feature)
-        plt.title(f'Scatter Plot: {x_feature} vs {y_feature}')
+        plt.title(f'Scatter Plot: {feature1} vs {y_feature}')
         plt.grid(True)
 
         plt.tight_layout()
+        plt.savefig("scatter_plot.png", dpi=300, bbox_inches='tight')
         plt.show()
 
 
@@ -370,8 +370,8 @@ def main():
 
     (features, label) = dp.extract_features_labels(df_train)
 
-    #dp.draw_histogram(df_train)
-    #are_correlated = dp.draw_scatter_plot(df_train, 2, 7)
+    dp.draw_histogram(df_train)
+    dp.draw_scatter_plot(df_train, 2, 7)
     dp.get_pearson_corr(df_train)
 
 

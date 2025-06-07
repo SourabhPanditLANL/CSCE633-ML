@@ -291,7 +291,14 @@ def main():
     axes = axes.flatten()  # Flatten to 1D array for easy indexing
 
     # Plot each feature
-    for i, feature in enumerate(features):
+    nfeatures = features
+    #nfeatures.append(label)
+    print (f"Type: {type(nfeatures)}")
+    print (f": {nfeatures}")
+    print (f"Type: {type(label)}")
+    print (f": {label}")
+
+    for i, feature in enumerate(df_train.columns):
         print (f"FEATURE: {feature}")
         axes[i].hist(df_train[feature], bins=20, edgecolor='black')  # Drop NaNs for clean hist
         axes[i].set_title(f'Histogram of {feature}')

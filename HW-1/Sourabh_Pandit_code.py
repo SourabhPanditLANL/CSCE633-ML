@@ -68,6 +68,7 @@ class DataProcessor:
         """
         # TODO: Implement data cleaning
         data.dropna(inplace=True)
+        data.reset_index(drop=True, inplace=True)
         return data
 
     def extract_features_labels(self, data: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
@@ -80,7 +81,10 @@ class DataProcessor:
             Tuple of feature matrix X and label vector y
         """
         # TODO: Implement feature/label extraction
-        return (data.columns[:-1], data.columns[-1])
+
+        X = data.iloc[:, :-1].to_numpy()
+        y = data.iloc[:, -1].to_numpy()
+        return (X, y)
 
 
     def get_pearson_corr(self, data: pd.DataFrame) -> None:
@@ -129,8 +133,7 @@ class DataProcessor:
         axes = axes.flatten()  # Flatten to 1D array for easy indexing
 
         for i, feature in enumerate(data.columns):
-            print (f"FEATURE: {feature}")
-            axes[i].hist(data[feature], bins=20, edgecolor='black')  # Drop NaNs for clean hist
+            axes[i].hist(data[feature], bins=20, edgecolor='black')
             axes[i].set_title(f'Histogram of {feature}')
             axes[i].set_xlabel(feature)
             axes[i].set_ylabel('Frequency')
@@ -139,7 +142,7 @@ class DataProcessor:
         plt.savefig("features_histogram.png", dpi=300, bbox_inches='tight')
         plt.show()
 
-    def draw_scatter_plot(self, data: pd.DataFrame, feature1_idx: int, feature2_idx: int) -> None:
+    def draw_scatter_plot(self, data: pd.DataFrame, idx1: int, idx2: int) -> None:
         """Extract features and labels from dataframe, convert to numpy arrays.
 
         Args:
@@ -150,20 +153,60 @@ class DataProcessor:
         Returns:
             returns Nothing
         """
-        feature1 = data.columns[feature1_idx]
-        y_feature = data.columns[feature2_idx]
+        feature1 = data.columns[idx1]
+        feature2 = data.columns[idx2]
 
         plt.figure(figsize=(8, 6))
-        plt.scatter(data[feature1], data[y_feature], alpha=0.6, edgecolors='k')
+        plt.scatter(data[feature1], data[feature2], alpha=0.6, edgecolors='k')
 
         plt.xlabel(feature1)
-        plt.ylabel(y_feature)
-        plt.title(f'Scatter Plot: {feature1} vs {y_feature}')
+        plt.ylabel(feature2)
+        plt.title(f'Scatter Plot: {feature1} vs {feature2}')
         plt.grid(True)
 
         plt.tight_layout()
         plt.savefig("scatter_plot.png", dpi=300, bbox_inches='tight')
         plt.show()
+
+    def normalize_ndarray(self, X: np.ndarray) -> np.ndarray:
+        """
+            Normalize each feature (column) in the NumPy array to the range [0, 1].
+
+        Args:
+            X: NumPy array of shape (n_samples, n_features)
+
+        Returns:
+            A new NumPy array with normalized values
+        """
+        X_normalized = X.copy().astype(float)  # Make a float copy for division
+
+        for i in range(X.shape[1]):
+            col = X[:, i]
+            min_val = np.min(col)
+            max_val = np.max(col)
+            if min_val != max_val:
+                X_normalized[:, i] = (col - min_val) / (max_val - min_val)
+            else:
+                X_normalized[:, i] = 0.0
+
+        return X_normalized
+
+
+    def create_binary_labels(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+            Normalize each feature (column) in the NumPy array to the range [0, 1].
+
+        Args:
+            X: NumPy array of shape (n_samples, n_features)
+
+        Returns:
+            A new NumPy array with normalized values
+        """
+
+        data['binary_label'] = (data['PT08.S1(CO)'] > 1000).astype(int)
+
+        data.drop(columns=['PT08.S1(CO)'], axis=1, inplace=True)
+        return data
 
 
 class LinearRegression:
@@ -175,10 +218,14 @@ class LinearRegression:
             max_iter: Maximum number of iterations
             l2_lambda: L2 regularization strength
         """
-        self.weights = None
-        self.bias = None
-        self.learning_rate = None
-        self.max_iter = None
+
+
+        self.weights = None # We do not know #features yet.
+        self.bias = 0.0
+        self.learning_rate = 0.001
+        self.max_iter = 1000
+        self.l2_lambda = 0.0     # SP-Check
+        self.losses = list()
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> list[float]:
         """Train linear regression model.
@@ -191,6 +238,21 @@ class LinearRegression:
             List of loss values
         """
         # TODO: Implement linear regression training
+        n_samples, n_features = X.shape
+        if self.weights is None:
+            self.weights = np.ones(n_features) * 0.01
+
+        for _ in range(self.max_iter):
+            y_pred = self.predict(X)
+            error = y - y_pred
+
+            self.losses.append(self.criterion(y, y_pred))
+
+            dw = -2  * X.T @ error / n_samples
+            db = -2 * np.sum(error) / n_samples
+
+            self.weights -= self.learning_rate * dw
+            self.bias -= self.learning_rate * db
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Make predictions with trained model.
@@ -202,6 +264,7 @@ class LinearRegression:
             Predicted values
         """
         # TODO: Implement linear regression prediction
+        return X @ self.weights + self.bias
 
     def criterion(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Calculate MSE loss.
@@ -214,6 +277,8 @@ class LinearRegression:
             Loss value
         """
         # TODO: Implement loss function
+        loss = np.mean((y_true - y_pred) ** 2)
+        return loss
 
     def metric(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Calculate RMSE.
@@ -226,6 +291,7 @@ class LinearRegression:
             Metric value
         """
         # TODO: Implement RMSE calculation
+        return np.sqrt(self.criterion(y_true, y_pred))
 
 class LogisticRegression:
     def __init__(self):
@@ -236,9 +302,10 @@ class LogisticRegression:
             max_iter: Maximum number of iterations
         """
         self.weights = None
-        self.bias = None
-        self.learning_rate = None
-        self.max_iter = None
+        self.bias = 0
+        self.learning_rate = 0.01
+        self.max_iter = 1000
+        self.losses = list()
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> list[float]:
         """Train logistic regression model with normalization and L2 regularization.
@@ -251,6 +318,21 @@ class LogisticRegression:
             List of loss values
         """
         # TODO: Implement logistic regression training
+
+        n_samples, n_features = X.shape
+        self.weights = np.zeros(n_features)
+
+        for _ in range(self.max_iter):
+            linear_model = np.dot(X, self.weights) + self.bias
+            y_pred = self.sigmoid(linear_model)
+            loss = self.criterion(y, y_pred)
+            self.losses.append(loss)
+
+            dw = np.dot(X.T, (y_pred -y)) / n_samples
+            db = np.sum(y_pred -y) / n_samples
+
+            self.weights -= self.learning_rate * dw
+            self.bias -= self.learning_rate * db
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """Calculate prediction probabilities using normalized features.
@@ -285,6 +367,10 @@ class LogisticRegression:
             Loss value
         """
         # TODO: Implement loss function
+        epsilon = 1e-15  # to prevent log(0)
+        y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
+        loss = -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
+        return loss
 
     def F1_score(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Calculate F1 score with handling of edge cases.
@@ -333,6 +419,17 @@ class LogisticRegression:
         """
         # TODO: Implement AUROC calculation
 
+    def sigmoid(self, z: float) -> float:
+        """Calculate the value of the sigmoid function.
+
+        Args:
+            z: Paramt W-Transpose*X
+
+        Returns:
+            float value of the sigmoid function
+        """
+        return 1 / (1 + np.exp(-z))
+
 class ModelEvaluator:
     def __init__(self, n_splits: int = 5, random_state: int = 42):
         """Initialize evaluator with number of CV splits.
@@ -358,31 +455,88 @@ class ModelEvaluator:
         """
         # TODO: Implement cross-validation
 
-def main():
-    dp = DataProcessor("./data")
+def plot_iteration_loss(losses: list, learning_rate: float) -> None:
 
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(len(losses)), losses, marker='o', markersize=2, linestyle='-')
+
+    plt.xlabel("Index")
+    plt.ylabel("Value")
+    plt.title("Loss vs Iteration")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("loss_"+f"{len(losses)}_iters_LR_{learning_rate}"+".png", dpi=300, bbox_inches='tight')
+    plt.show()
+
+def main():
+
+    dp = DataProcessor("./")
     (df_train, df_test) = dp.load_data()
 
-    num_missing_data = dp.check_missing_values(df_train)
+    for dframe in (df_train, df_test):
+        print(f"Shape: {dframe.shape}", end=' -> ')
+        if dp.check_missing_values(dframe) > 0:
+            dp.clean_data(df_train)
+        print(dframe.shape)
 
-    if num_missing_data > 0:
-        dp.clean_data(df_train)
+    # ========================================= #
+    # Train and Test Data
+    # ========================================= #
+    (X_train, y_train) = dp.extract_features_labels(df_train)
+    X_train_scaled = dp.normalize_ndarray(X_train)
 
-    (features, label) = dp.extract_features_labels(df_train)
+    X_test = df_test.iloc[:, ].to_numpy()
+    X_test_scaled = dp.normalize_ndarray(X_test)
 
-    dp.draw_histogram(df_train)
-    dp.draw_scatter_plot(df_train, 2, 7)
-    dp.get_pearson_corr(df_train)
+    #dp.draw_histogram(pd.DataFrame(X_train))
+    #dp.draw_histogram(pd.DataFrame(X_train_scaled))
+
+    #dp.draw_scatter_plot(df_train, 2, 7)
+    #dp.get_pearson_corr(df_train)
+
+    # ========================================= #
+    # Linear Regression
+    # ========================================= #
+    #model = LinearRegression()
+    #model.fit(X_train_scaled, y_train)
 
 
-    print("Hello World! ..... ")
+    #y_pred = model.predict(X_train_scaled)
+
+    #print("Weights:", model.weights)
+    #print("Bias:", model.bias)
+
+    # Compute and print RMSE
+    #rmse = model.metric(y_train, y_pred)
+    #print("RMSE:", rmse)
+
+    #plot_iteration_loss(model.losses, model.learning_rate)
+
+
+    # ========================================= #
+    # Train and Test Data
+    # ========================================= #
+    df_train_bin = dp.create_binary_labels(df_train)
+    (X_train_bin, y_train_bin) = dp.extract_features_labels(df_train_bin)
+    X_train_bin_scaled = dp.normalize_ndarray(X_train_bin)
+
+    X_test = df_test.iloc[:, ].to_numpy()
+    X_test_scaled = dp.normalize_ndarray(X_test)
+
+    # ========================================= #
+    # Logistic Regression
+    # ========================================= #
+    model = LogisticRegression()
+    model.fit(X_train_bin_scaled, y_train_bin)
+
+
+
     '''
     print(f"Data dir: {dp.data_root}")
     print (df_train.head())
     print (df_test.head())
     print(f"#Missing Vals = {num_missing_data}")
     print(f"#Missing Vals = {num_missing_data}")
-    print(f"Features: {features}\t label: {label}")
     '''
 
 if __name__ == "__main__":

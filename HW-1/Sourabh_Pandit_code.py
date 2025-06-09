@@ -485,6 +485,31 @@ class ModelEvaluator:
         """
         # TODO: Implement cross-validation
 
+        scores = []
+
+        for train_index, val_index in self.kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y[train_index], y[val_index]
+
+            model.fit(X_train, y_train)
+
+            if hasattr(model, "F1_score") and hasattr(model, "get_auroc"):
+                #  This is our Logistic Regression
+                y_pred_probs = model.predict_proba(X_val)
+                y_pred_labels = model.predict(X_val)
+
+                f1 = model.F1_score(y_val, y_pred_labels)
+                auroc = model.get_auroc(y_val, y_pred_probs)
+                scores.append((f1, auroc))
+
+            else:
+                # We have the good old linear regression
+                y_pred = model.predict(X_val)
+                rmse = model.metric(y_val, y_pred)
+                scores.append(rmse)
+
+        return scores
+
 def plot_iteration_loss(losses: list, plot_name: str, model_type: str) -> None:
 
     plt.figure(figsize=(10, 5))
@@ -531,7 +556,7 @@ def main():
     # ========================================= #
     # Linear Regression
     # ========================================= #
-    '''
+
     linear_model = LinearRegression(learning_rate = 0.05, max_iter = 10000)
     linear_model.fit(X_train_scaled, y_train)
 
@@ -552,7 +577,6 @@ def main():
 
     y_test_pred = linear_model.predict(X_test_scaled)
     print(f"Y_TEST_PRED: {y_test_pred}")
-    '''
 
 
     # ========================================= #
@@ -570,7 +594,6 @@ def main():
     # ========================================= #
     # Train and Test Data
     # ========================================= #
-
     y_binary = (y_train > 1000).astype(int)
 
     log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.3500)
@@ -596,6 +619,21 @@ def main():
     y_pred_probs = log_model.predict_proba(X_test_scaled)
     print(f"Y_PRED: {np.sum(y_pred)}")
     print(f"Y_PRED_PROBS: {y_pred_probs}")
+
+    evaluator = ModelEvaluator(n_splits= 5,  random_state = 42)
+
+    # Linear
+    linear_scores = evaluator.cross_validation(linear_model, X_train_scaled, y_train)
+    print("Avg RMSE:", np.mean(linear_scores))
+
+    print("\n=========================\n")
+
+    # Logistic
+    logistic_scores = evaluator.cross_validation(log_model, X_train_scaled, y_binary)
+    f1s, aurocs = zip(*logistic_scores)
+    print("Avg F1:", np.mean(f1s), "Std:", np.std(f1s))
+    print("Avg AUROC:", np.mean(aurocs), "Std:", np.std(aurocs))
+
 
 if __name__ == "__main__":
     main()

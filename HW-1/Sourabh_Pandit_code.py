@@ -195,7 +195,7 @@ class DataProcessor:
         return X_normalized, min_vals, max_vals
 
 class LinearRegression:
-    def __init__(self, learning_rate: float = 0.01, max_iter: int = 1000, l2_lambda: float = None):
+    def __init__(self, learning_rate: float = 0.01, max_iter: int = 1000, l2_lambda: float = 0.0):
         """Initialize linear regression model.
 
         Args:
@@ -210,7 +210,7 @@ class LinearRegression:
         self.learning_rate = learning_rate
         self.max_iter = max_iter
         self.l2_lambda = l2_lambda
-        self.losses = list()
+        self.losses = []
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> list[float]:
         """Train linear regression model.
@@ -233,10 +233,15 @@ class LinearRegression:
             y_pred = self.predict(X)
             error = y - y_pred
 
-            self.losses.append(self.criterion(y, y_pred))
+            # If using L2 Norm Regularization
+            loss = self.criterion(y, y_pred) + self.l2_lambda * np.sum(self.weights ** 2)
+            dw = (-2 * X.T @ error / n_samples) + 2 * self.l2_lambda * self.weights
 
-            dw = -2  * X.T @ error / n_samples
+            #loss = self.criterion(y, y_pred)  # if Not using L2 Norm Regularization
+            #dw = -2  * X.T @ error / n_samples
+
             db = -2 * np.sum(error) / n_samples
+            self.losses.append(loss)
 
             self.weights -= self.learning_rate * dw
             self.bias -= self.learning_rate * db
@@ -295,7 +300,7 @@ class LogisticRegression:
         self.bias = 0
         self.learning_rate = learning_rate
         self.max_iter = max_iter
-        self.losses = list()
+        self.losses = []
         self.prob_threshold = prob_threshold
 
     def set_prob_threshold(self, prob_thresh: float) -> None:
@@ -539,7 +544,6 @@ def main():
     X_test = df_test.iloc[:, ].to_numpy()
 
     X_train_scaled, min_vals, max_vals = dp.normalize(X_train)
-
     X_test_scaled, _, _ = dp.normalize(X_test, min_vals, max_vals)
 
     # ========================================= #
@@ -557,27 +561,30 @@ def main():
     # Linear Regression
     # ========================================= #
 
-    linear_model = LinearRegression(learning_rate = 0.05, max_iter = 10000)
-    linear_model.fit(X_train_scaled, y_train)
+    for iter in (1000, 5000, 10000, 50000, 100000):
+        for lr in (0.1, 0.08, 0.05, 0.03, 0.01, 0.008, 0.004, 0.001):
+            for l2 in (0.1, 0.08, 0.05, 0.02, 0.01, 0.008, 0.005, 0.002, 0.001, 0.0008, 0.0006, 0.0004, 0.0002, 0.0001):
+                #linear_model = LinearRegression(learning_rate = 0.05, max_iter = 1000, l2_lambda=0.001)
+                linear_model = LinearRegression(learning_rate = lr, max_iter = iter, l2_lambda=l2)
+                linear_model.fit(X_train_scaled, y_train)
 
-    y_pred = linear_model.predict(X_train_scaled)
+                y_pred = linear_model.predict(X_train_scaled)
 
-    #print("Weights:", linear_model.weights)
-    #print("Bias:", linear_model.bias)
+                rmse = linear_model.metric(y_train, y_pred)
 
-    # Compute and print RMSE
-    rmse = linear_model.metric(y_train, y_pred)
-    print("RMSE:", rmse)
+                plot_name =  "lin_regr_loss_"                 + \
+                            f"_iters_{linear_model.max_iter}" + \
+                            f"_LR_{linear_model.learning_rate}"
 
-    plot_name =  "lin_regr_loss_"                 + \
-                f"_iters_{linear_model.max_iter}" + \
-                f"_LR_{linear_model.learning_rate}"
+                if rmse < 72.0:
+                    print(f"[LR {lr:6.4f}, {iter:7d} {l2:6.4f}]", end=' --> ')
+                    print("RMSE:", rmse)
+                #plot_iteration_loss(linear_model.losses, plot_name, "Linear Regression")
 
-    plot_iteration_loss(linear_model.losses, plot_name, "Linear Regression")
+                y_test_pred = linear_model.predict(X_test_scaled)
+                #print(f"Y_TEST_PRED: {y_test_pred}")
 
-    y_test_pred = linear_model.predict(X_test_scaled)
-    print(f"Y_TEST_PRED: {y_test_pred}")
-
+    exit(0)
 
     # ========================================= #
     # Logistic Regression

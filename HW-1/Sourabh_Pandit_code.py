@@ -168,9 +168,9 @@ class DataProcessor:
         plt.savefig("scatter_plot.png", dpi=300, bbox_inches='tight')
         plt.show()
 
-    def normalize_ndarray(self, X: np.ndarray,
-						  min_vals: np.ndarray=None,
-						  max_vals: np.ndarray=None) -> np.ndarray:
+    def normalize(self, X: np.ndarray,
+                          min_vals: np.ndarray=None,
+                          max_vals: np.ndarray=None) -> np.ndarray:
         """
             Normalize each feature (column) in the NumPy array to the range [0, 1].
 
@@ -186,8 +186,6 @@ class DataProcessor:
             min_vals = np.min(X, axis=0)
             max_vals = np.max(X, axis=0)
 
-        print(f"TYPE {(min_vals.shape)}")
-        print(f"TYPE {(max_vals.shape)}")
         for i in range(X.shape[1]):
             if min_vals[i] != max_vals[i]:
                 X_normalized[:, i] = (X[:, i] - min_vals[i]) / (max_vals[i] - min_vals[i])
@@ -195,23 +193,6 @@ class DataProcessor:
                 X_normalized[:, i] = 0.0
 
         return X_normalized, min_vals, max_vals
-
-    def create_binary_labels(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-            Normalize each feature (column) in the NumPy array to the range [0, 1].
-
-        Args:
-            X: NumPy array of shape (n_samples, n_features)
-
-        Returns:
-            A new NumPy array with normalized values
-        """
-
-        data['binary_label'] = (data['PT08.S1(CO)'] > 1000).astype(int)
-
-        data.drop(columns=['PT08.S1(CO)'], axis=1, inplace=True)
-        return data
-
 
 class LinearRegression:
     def __init__(self, learning_rate: float = 0.01, max_iter: int = 1000, l2_lambda: float = None):
@@ -352,6 +333,8 @@ class LogisticRegression:
 
             self.weights -= self.learning_rate * dw
             self.bias -= self.learning_rate * db
+
+        return self.losses
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """Calculate prediction probabilities using normalized features.
@@ -530,9 +513,9 @@ def main():
     (X_train, y_train) = dp.extract_features_labels(df_train)
     X_test = df_test.iloc[:, ].to_numpy()
 
-    X_train_scaled, min_vals, max_vals = dp.normalize_ndarray(X_train)
+    X_train_scaled, min_vals, max_vals = dp.normalize(X_train)
 
-    X_test_scaled, _, _ = dp.normalize_ndarray(X_test, min_vals, max_vals)
+    X_test_scaled, _, _ = dp.normalize(X_test, min_vals, max_vals)
 
     # ========================================= #
     # EDA
@@ -548,8 +531,8 @@ def main():
     # ========================================= #
     # Linear Regression
     # ========================================= #
-
-    linear_model = LinearRegression(learning_rate = 0.05, max_iter = 100000)
+    '''
+    linear_model = LinearRegression(learning_rate = 0.05, max_iter = 10000)
     linear_model.fit(X_train_scaled, y_train)
 
     y_pred = linear_model.predict(X_train_scaled)
@@ -569,9 +552,8 @@ def main():
 
     y_test_pred = linear_model.predict(X_test_scaled)
     print(f"Y_TEST_PRED: {y_test_pred}")
+    '''
 
-
-    exit(0)
 
     # ========================================= #
     # Logistic Regression
@@ -588,34 +570,18 @@ def main():
     # ========================================= #
     # Train and Test Data
     # ========================================= #
-    df_train_binary = dp.create_binary_labels(df_train)
-    (X_train_binary_label, y_train_binary_label) = dp.extract_features_labels(df_train_binary)
-    X_train_bin_scaled, min_vals, max_vals = dp.normalize_ndarray(X_train_binary_label)
+
+    y_binary = (y_train > 1000).astype(int)
 
     log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.3500)
 
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=50000 , prob_threshold=0.2500)
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=25000 , prob_threshold=0.3000)
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=10000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=10000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=50000 , prob_threshold=0.2500)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=25000 , prob_threshold=0.3000)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=25000 , prob_threshold=0.3000)
-    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=25000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=10000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(0.0200, max_iter=40000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(0.0200, max_iter=25000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(0.0100, max_iter=50000 , prob_threshold=0.4000)
+    log_model.fit(X_train_scaled, y_binary)
 
-    log_model.fit(X_train_bin_scaled, y_train_binary_label)
+    y_pred = log_model.predict(X_train_scaled)
+    f1_score = log_model.F1_score(y_binary, y_pred)
 
-    y_pred = log_model.predict(X_train_bin_scaled)
-    f1_score = log_model.F1_score(y_train_binary_label, y_pred)
-
-    y_pred_probs = log_model.predict_proba(X_train_bin_scaled)
-    auroc = log_model.get_auroc(y_train_binary_label, y_pred_probs)
+    y_pred_probs = log_model.predict_proba(X_train_scaled)
+    auroc = log_model.get_auroc(y_binary, y_pred_probs)
 
     plot_name =  "log_regr_loss_"                  + \
                 f"_iters_{log_model.max_iter}"     + \
@@ -635,7 +601,7 @@ if __name__ == "__main__":
     main()
     print("Hello World!")
 
-    '''
+'''
     print(f"Data dir: {dp.data_root}")
     print (df_train.head())
     print (df_test.head())
@@ -646,7 +612,21 @@ if __name__ == "__main__":
     print (f"NUM_ONES = {num_ones}")
     num_zeros = sum(1 for x in y_pred if x == 0)
     print (f"NUM_ZEROS = {num_zeros}")
-    '''
+
+    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=50000 , prob_threshold=0.2500)
+    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=25000 , prob_threshold=0.3000)
+    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=10000 , prob_threshold=0.3500)
+    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=10000 , prob_threshold=0.4000)
+    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=50000 , prob_threshold=0.2500)
+    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=25000 , prob_threshold=0.3000)
+    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.3500)
+    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.4000)
+    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=25000 , prob_threshold=0.3000)
+    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=25000 , prob_threshold=0.3500)
+    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=10000 , prob_threshold=0.4000)
+    #log_model = LogisticRegression(0.0200, max_iter=40000 , prob_threshold=0.3500)
+    #log_model = LogisticRegression(0.0200, max_iter=25000 , prob_threshold=0.4000)
+    #log_model = LogisticRegression(0.0100, max_iter=50000 , prob_threshold=0.4000)
 
 def tune_hyperparams_log_regr() -> None:
 
@@ -661,14 +641,14 @@ def tune_hyperparams_log_regr() -> None:
     # Train and Test Data
     # ========================================= #
     (X_train, y_train) = dp.extract_features_labels(df_train)
-    min_vals, max_vals, X_train_scaled = dp.normalize_ndarray(X_train)
+    min_vals, max_vals, X_train_scaled = dp.normalize(X_train)
 
     X_test = df_test.iloc[:, ].to_numpy()
-    X_test_scaled = dp.normalize_ndarray(X_test, min_vals, max_vals)
+    X_test_scaled = dp.normalize(X_test, min_vals, max_vals)
 
     df_train_binary = dp.create_binary_labels(df_train)
-    (X_train_binary_label, y_train_binary_label) = dp.extract_features_labels(df_train_binary)
-    X_train_bin_scaled = dp.normalize_ndarray(X_train_binary_label)
+    (X_train, y_binary) = dp.extract_features_labels(df_train_binary)
+    X_train_scaled = dp.normalize(X_train)
     log_model = LogisticRegression(learning_rate=0.02, max_iter=50000, prob_threshold = 0.35)
 
     eval_list= []
@@ -684,13 +664,13 @@ def tune_hyperparams_log_regr() -> None:
                         log_model.set_prob_threshold(prob)
                         log_model.set_learning_rate(lr)
 
-                        log_model.fit(X_train_bin_scaled, y_train_binary_label)
+                        log_model.fit(X_train_scaled, y_binary)
 
-                        y_pred = log_model.predict(X_train_bin_scaled)
-                        f1_score = log_model.F1_score(y_train_binary_label, y_pred)
+                        y_pred = log_model.predict(X_train_scaled)
+                        f1_score = log_model.F1_score(y_binary, y_pred)
 
-                        y_pred_probs = log_model.predict_proba(X_train_bin_scaled)
-                        auroc = log_model.get_auroc(y_train_binary_label, y_pred_probs)
+                        y_pred_probs = log_model.predict_proba(X_train_scaled)
+                        auroc = log_model.get_auroc(y_binary, y_pred_probs)
 
                         print (f"f1_score = {f1_score:6.4f}", end=' -> ')
                         print (f"auroc= {auroc:6.4f}")
@@ -706,3 +686,4 @@ def tune_hyperparams_log_regr() -> None:
                             break
 
                     print("")
+    '''

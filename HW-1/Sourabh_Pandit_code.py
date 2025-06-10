@@ -620,9 +620,11 @@ def tune_hyperparams_log_regr() -> None:
 
     eval_list= []
     found = False
-    for lr in [0.1, 0.08, 0.05, 0.02, 0.01, 0.005]:
+    #for lr in [0.1, 0.08, 0.05, 0.02, 0.01, 0.005]:
+    for lr in [0.08, 0.05, 0.01, 0.005]:
         if found == False:
-            for prob in [0.1, 0.2, 0.25, 0.3, 0.35, 0.4]:
+            #for prob in [0.1, 0.2, 0.25, 0.3, 0.35, 0.4]:
+            for prob in [0.1, 0.25, 0.35, 0.4]:
                 if found == False:
                     for iter in [10000, 25000, 50000]:
                         print(f"[LR: {lr:6.4f}, prob_thresh: {prob:6.4f}, max_iter: {iter:7d}]", end=' -> ')
@@ -677,9 +679,13 @@ def tune_hyperparams_lin_regr() -> None:
 
     y_binary = (y_train > 1000).astype(int)
 
-    for iter in (1000, 5000, 10000, 50000):
-        for lr in (0.1, 0.08, 0.05, 0.01, 0.008, 0.004, 0.001):
-            for l2 in (0.1, 0.08, 0.05, 0.02, 0.01, 0.008, 0.005, 0.002, 0.001, 0.0008, 0.0006, 0.0004, 0.0002, 0.0001):
+    #for iter in (1000, 5000, 10000, 50000):
+    #    for lr in (0.1, 0.08, 0.05, 0.01, 0.008, 0.004, 0.001):
+    #        for l2 in (0.1, 0.08, 0.05, 0.02, 0.01, 0.008, 0.005, 0.002, 0.001, 0.0008, 0.0004, 0.0002, 0.0001):
+
+    for iter in (1000, 5000, 10000):
+        for lr in (0.08, 0.05, 0.01, 0.004, 0.001):
+            for l2 in (0.08, 0.01, 0.008, 0.005,  0.0004):
                 #linear_model = LinearRegression(learning_rate = 0.05, max_iter = 1000, l2_lambda=0.0004)
                 linear_model = LinearRegression(learning_rate = lr, max_iter = iter, l2_lambda=l2)
                 linear_model.fit(X_train_scaled, y_train, print_weights=False)
@@ -758,11 +764,11 @@ def main():
     # being called anymore, but those hyperparam values are being used
 
     tune_hyperparams_lin_regr()
+
+    # Update: Re-enabled at the end, with reduced params for demonstrating the process
     '''
 
-    linear_model = LinearRegression(learning_rate = 0.05,
-                                     max_iter = 10000,
-                                     l2_lambda=0.0004)
+    linear_model = LinearRegression(learning_rate = 0.05, max_iter = 10000, l2_lambda=0.0004)
 
     linear_model.fit(X_train_scaled, y_train)
     y_pred = linear_model.predict(X_train_scaled)
@@ -789,6 +795,8 @@ def main():
     # being called anymore, but those hyperparam values are being used
 
     tune_hyperparams_log_regr()
+
+    # Update: Re-enabled at the end, with reduced params for demonstrating the process
     '''
 
     # =================================================================== #
@@ -796,9 +804,7 @@ def main():
     # =================================================================== #
     y_binary = (y_train > 1000).astype(int)
 
-    log_model = LogisticRegression(learning_rate=0.0800,
-                                    max_iter=10000 ,
-                                    prob_threshold=0.3500)
+    log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.3500)
 
     log_model.fit(X_train_scaled, y_binary)
 
@@ -842,16 +848,25 @@ def main():
     # =================================================================== #
     logistic_scores = evaluator.cross_validation(log_model, X_train_scaled, y_binary)
     f1_scores, aurocs = zip(*logistic_scores)
-    print(f"\n   Cross-Validation Logistic Regression: Avg F1: {np.mean(f1_scores):6.4f}, Std: {np.std(f1_scores):6.4f}")
-    print(f"   Cross-Validation Logistic Regression: Avg AUROC: {np.mean(aurocs):6.4f}, Std: {np.std(aurocs):6.4f}")
-
-
+    print(f"\n   Cross-Validation Log Regr: Avg F1: {np.mean(f1_scores):6.4f}, Std: {np.std(f1_scores):6.4f}")
+    print(f"   Cross-Validation Log Regr: Avg AUROC: {np.mean(aurocs):6.4f}, Std: {np.std(aurocs):6.4f}")
 
     # =================================================================== #
     # ROC Curve
     # =================================================================== #
     evaluator = ModelEvaluator()
     evaluator.plot_roc_per_fold(log_model, X_train_scaled, y_binary)
+
+    # =================================================================== #
+    # Hyperparameter Tuning Linear Regression
+    # =================================================================== #
+    tune_hyperparams_lin_regr()
+
+    # =================================================================== #
+    # Hyperparameter Tuning Logistic Regression
+    # =================================================================== #
+    tune_hyperparams_log_regr()
+
 
 if __name__ == "__main__":
     main()

@@ -174,7 +174,7 @@ class DataProcessor:
 
     def normalize(self, X: np.ndarray,
                           min_vals: np.ndarray=None,
-                          max_vals: np.ndarray=None) -> np.ndarray:
+                          max_vals: np.ndarray=None) -> (np.ndarray, np.ndarray, np.ndarray):
         """
             Normalize each feature (column) in the NumPy array to the range [0, 1].
 
@@ -238,17 +238,22 @@ class LinearRegression:
             error = y - y_pred
 
             # If using L2 Norm Regularization
-            loss = self.criterion(y, y_pred) + self.l2_lambda * np.sum(self.weights ** 2)
-            dw = (-2 * X.T @ error / n_samples) + 2 * self.l2_lambda * self.weights
+            if self.l2_lambda > 0.0:
+                loss = self.criterion(y, y_pred) + self.l2_lambda * np.sum(self.weights ** 2)
+                dw = (-2 * X.T @ error / n_samples) + 2 * self.l2_lambda * self.weights
 
-            #loss = self.criterion(y, y_pred)  # if Not using L2 Norm Regularization
-            #dw = -2  * X.T @ error / n_samples
+            else:
+                loss = self.criterion(y, y_pred)  # if Not using L2 Norm Regularization
+                dw = -2  * X.T @ error / n_samples
 
             db = -2 * np.sum(error) / n_samples
             self.losses.append(loss)
 
             self.weights -= self.learning_rate * dw
             self.bias -= self.learning_rate * db
+
+        print(f"(Linear Regression Weights: {self.weights}")
+        return self.losses
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Make predictions with trained model.
@@ -410,7 +415,7 @@ class LogisticRegression:
 
         return 2 * precision * recall / (precision + recall + 1e-15)
 
-    def label_binarize(self, y: np.ndarray) -> np.ndarray:
+    def binarize_label(self, y: np.ndarray) -> np.ndarray:
         """Binarize labels for binary classification.
 
         Args:
@@ -458,6 +463,7 @@ class LogisticRegression:
             AUROC score
         """
         # TODO: Implement AUROC calculation
+        return self.get_auroc(y_true, y_pred)
 
     def sigmoid(self, z: float) -> float:
         """Calculate the value of the sigmoid function.

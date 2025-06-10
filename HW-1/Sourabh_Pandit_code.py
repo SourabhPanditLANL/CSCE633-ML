@@ -520,6 +520,63 @@ class ModelEvaluator:
 
         return scores
 
+    def plot_roc_per_fold(self, model, X_train_bin: np.ndarray, y_train_bin: np.ndarray) -> None:
+        """
+        Plot ROC curves and compute AUROC for each fold using Logistic Regression.
+
+        Args:
+            model: Logistic Regression model for which ROC curve is desired
+            X_train_bin: Feature matrix
+            y_train_bin: Target vector
+
+        Returns:
+            None
+        """
+        plt.figure(figsize=(8, 6))
+
+        for fold, (train_idx, val_idx) in enumerate(self.kf.split(X_train_bin), 1):
+            X_train, X_val = X_train_bin[train_idx], X_train_bin[val_idx]
+            y_train, y_val = y_train_bin[train_idx], y_train_bin[val_idx]
+
+            model.fit(X_train, y_train)
+            y_probs = model.predict_proba(X_val)
+
+            thresholds = np.sort(np.unique(y_probs))[::-1]
+            tprs, fprs = [], []
+
+            total_pos = np.sum(y_val)
+            total_neg = len(y_val) - total_pos
+
+            for thresh in thresholds:
+                y_pred = (y_probs >= thresh).astype(int)
+                tp = np.sum((y_val == 1) & (y_pred == 1))
+                fp = np.sum((y_val == 0) & (y_pred == 1))
+
+                tpr = tp / (total_pos + 1e-15)
+                fpr = fp / (total_neg + 1e-15)
+
+                tprs.append(tpr)
+                fprs.append(fpr)
+
+            tprs = np.array(tprs)
+            fprs = np.array(fprs)
+            auroc = np.trapz(tprs, fprs)
+
+            plt.plot(fprs, tprs, label=f"Fold {fold} (AUROC = {auroc:.3f})")
+
+        plt.plot([0, 1], [0, 1], '--', color='gray')
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("ROC Curve per Fold (Logistic Regression)")
+        plt.legend(loc="lower right")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig("ROC-Curve-Log_Regr.png", dpi=300, bbox_inches='tight')
+        plt.show()
+
+
+
+
 def plot_iteration_loss(losses: list, plot_name: str, model_type: str) -> None:
 
     plt.figure(figsize=(10, 5))
@@ -557,10 +614,6 @@ def main():
     # and test data (In our case test data does not have target var.
     (X_train, y_train) = dp.extract_features_labels(df_train)
 
-    print("")
-    for col in df_train.columns:
-        print(col, end=', ')
-    print("")
     X_test = df_test.iloc[:, ].to_numpy()
 
     # Normalize the train test data
@@ -661,6 +714,7 @@ def main():
     linear_scores = evaluator.cross_validation(linear_model, X_train_scaled, y_train)
     print("\nCross Validation")
     print("\n   Cross-Validation Linear Regression: Avg RMSE:", np.mean(linear_scores))
+    print("   Cross-Validation Linear Regression: Std Dev RMSE:", np.std(linear_scores))
 
 
     # =================================================================== #
@@ -671,6 +725,9 @@ def main():
     print(f"\n   Cross-Validation Logistic Regression: Avg F1: {np.mean(f1_scores):6.4f}, Std: {np.std(f1_scores):6.4f}")
     print(f"   Cross-Validation Logistic Regression: Avg AUROC: {np.mean(aurocs):6.4f}, Std: {np.std(aurocs):6.4f}")
 
+
+    evaluator = ModelEvaluator()
+    evaluator.plot_roc_per_fold(log_model, X_train_scaled, y_binary)
 
 if __name__ == "__main__":
     main()

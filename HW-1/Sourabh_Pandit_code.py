@@ -118,7 +118,7 @@ class DataProcessor:
         plt.yticks(rotation=0)
         plt.tight_layout()
         plt.savefig("feature_heatmap.png", dpi=300, bbox_inches='tight')
-        plt.show()
+        #plt.show()
 
     def draw_histogram(self, data: pd.DataFrame, hist_name: str) -> None:
         """Draw histogram for all features and the target variable
@@ -143,7 +143,7 @@ class DataProcessor:
 
         plt.tight_layout()
         plt.savefig(hist_name, dpi=300, bbox_inches='tight')
-        plt.show()
+        #plt.show()
 
 
     def draw_scatter_plot(self, data: pd.DataFrame, idx1: int, idx2: int) -> None:
@@ -170,7 +170,7 @@ class DataProcessor:
 
         plt.tight_layout()
         plt.savefig("scatter_plot.png", dpi=300, bbox_inches='tight')
-        plt.show()
+        #plt.show()
 
     def normalize(self, X: np.ndarray,
                           min_vals: np.ndarray=None,
@@ -572,7 +572,7 @@ class ModelEvaluator:
         plt.grid(True)
         plt.tight_layout()
         plt.savefig("ROC-Curve-Log_Regr.png", dpi=300, bbox_inches='tight')
-        plt.show()
+        #plt.show()
 
 
 
@@ -582,13 +582,13 @@ def plot_iteration_loss(losses: list, plot_name: str, model_type: str) -> None:
     plt.figure(figsize=(10, 5))
     plt.plot(range(len(losses)), losses, marker='o', markersize=2, linestyle='-')
 
-    plt.xlabel("Index")
-    plt.ylabel("Value")
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
     plt.title("Loss vs Iteration" + f"\n({model_type})")
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(plot_name +".png", dpi=300, bbox_inches='tight')
-    plt.show()
+    #plt.show()
 
 def main():
 

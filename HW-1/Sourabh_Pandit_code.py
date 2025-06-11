@@ -5,6 +5,10 @@ import seaborn as sns
 from sklearn.model_selection import KFold
 from typing import Tuple, List
 
+#from sklearn.linear_model import Lasso
+from sklearn.preprocessing import StandardScaler
+#from sklearn.metrics import mean_squared_error
+
 '''
 General Instructions:
 
@@ -42,7 +46,6 @@ class DataProcessor:
 
         df_train = pd.read_csv(train_data_csv)
         df_test = pd.read_csv(test_data_csv)
-
         return (df_train, df_test)
 
     def check_missing_values(self, data: pd.DataFrame) -> int:
@@ -67,6 +70,11 @@ class DataProcessor:
             Cleaned dataframe
         """
         # TODO: Implement data cleaning
+        for col in data.columns:
+            mask = data[col] != -200  # mask to exclude -200
+            mean_val = data.loc[mask, col].mean()
+            data.loc[data[col] == -200, col] = mean_val
+
         data.dropna(inplace=True)
         data.reset_index(drop=True, inplace=True)
         return data
@@ -85,6 +93,30 @@ class DataProcessor:
         X = data.iloc[:, :-1].to_numpy()
         y = data.iloc[:, -1].to_numpy()
         return (X, y)
+
+    def train_val_split(self, X: np.ndarray, y: np.ndarray, val_ratio: float = 0.2,
+                    seed: int = 1005) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Shuffle and split the dataset into training and validation sets.
+
+        Args:
+            X: Feature matrix
+            y: label vector
+            val_ratio: Proportion of data to use for validation
+            seed: Random seed for reproducibility
+
+        Returns: Tuple: (X_train, X_val, y_train, y_val)
+        """
+        n_samples = X.shape[0]
+        indices = np.arange(n_samples)
+        np.random.seed(seed)
+        np.random.shuffle(indices)
+        split_index = int((1 - val_ratio) * n_samples)
+        train_idx, val_idx = indices[:split_index], indices[split_index:]
+        X_train, X_val = X[train_idx], X[val_idx]
+        y_train, y_val = y[train_idx], y[val_idx]
+
+        return X_train, X_val, y_train, y_val
 
 
     def get_pearson_corr(self, data: pd.DataFrame) -> None:
@@ -199,7 +231,10 @@ class DataProcessor:
         return X_normalized, min_vals, max_vals
 
 class LinearRegression:
-    def __init__(self, learning_rate: float = 0.01, max_iter: int = 1000, l2_lambda: float = 0.0):
+    def __init__(self, learning_rate: float = 0.1, max_iter: int = 10000,
+                 l1_lambda: float = 0.0,
+                 l2_lambda: float = 0.0,
+                 reg_flag:int = 0):
         """Initialize linear regression model.
 
         Args:
@@ -208,13 +243,15 @@ class LinearRegression:
             l2_lambda: L2 regularization strength
         """
 
-
         self.weights = None # We do not know #features yet.
         self.bias = 0.0
         self.learning_rate = learning_rate
         self.max_iter = max_iter
+        self.l1_lambda = l1_lambda
         self.l2_lambda = l2_lambda
+        self.reg_flag = reg_flag
         self.losses = []
+        self.scaled = False
 
     def fit(self, X: np.ndarray, y: np.ndarray, print_weights: bool = True) -> list[float]:
         """Train linear regression model.
@@ -230,33 +267,48 @@ class LinearRegression:
 
         n_samples, n_features = X.shape
 
+        if self.scaled == False:
+            self.scaler = StandardScaler()
+            X_scaled = self.scaler.fit_transform(X)
+            self.scaled = True
+        else:
+            X_scaled = X
+
         if self.weights is None:
-            self.weights = np.ones(n_features) * 0.01
+            self.weights = np.random.randn(n_features) * 0.01
 
         for _ in range(self.max_iter):
-            y_pred = self.predict(X)
+            y_pred = self.predict(X_scaled)
             error = y - y_pred
 
-            # If using L2 Norm Regularization
-            if self.l2_lambda > 0.0:
-                loss = self.criterion(y, y_pred) + self.l2_lambda * np.sum(self.weights ** 2)
-                dw = (-2 * X.T @ error / n_samples) + 2 * self.l2_lambda * self.weights
-
+            if (self.reg_flag == 0):
+                # No Regularization
+                loss = self.criterion(y, y_pred)
+                dw = -2  * X_scaled.T @ error / n_samples
+            elif (self.reg_flag == 1):
+                # Lasso loss = MSE + L1 penalty
+                loss = self.criterion(y, y_pred) + self.l1_lambda * np.sum(np.abs(self.weights))
+                dw = (-2 * X_scaled.T @ error / n_samples) + self.l1_lambda * np.sign(self.weights)
             else:
-                loss = self.criterion(y, y_pred)  # if Not using L2 Norm Regularization
-                dw = -2  * X.T @ error / n_samples
+                # Ridge loss = MSE + L2 penalty
+                loss = self.criterion(y, y_pred) + self.l2_lambda * np.sum(self.weights ** 2)
+                dw = (-2 * X_scaled.T @ error / n_samples) + 2 * self.l2_lambda * self.weights
+
+            np.clip(dw, -1e5, 1e5, out=dw)
 
             db = -2 * np.sum(error) / n_samples
-            self.losses.append(loss)
 
             self.weights -= self.learning_rate * dw
             self.bias -= self.learning_rate * db
 
+            self.losses.append(loss)
+
         if print_weights == True:
             print(f"(Linear Regression Weights: {self.weights}")
+
         return self.losses
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
+    def predict(self, X: np.ndarray, scaled:bool = False) -> np.ndarray:
         """Make predictions with trained model.
 
         Args:
@@ -267,6 +319,7 @@ class LinearRegression:
         """
         # TODO: Implement linear regression prediction
 
+        X_scaled = self.scaler.transform(X)
         return X @ self.weights + self.bias
 
     def criterion(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -298,7 +351,7 @@ class LinearRegression:
         return np.sqrt(self.criterion(y_true, y_pred))
 
 class LogisticRegression:
-    def __init__(self, learning_rate: float = 0.01, max_iter: int = 50000, prob_threshold: float=0.5):
+    def __init__(self, learning_rate: float = 0.05, max_iter: int = 1000, prob_threshold: float=0.2):
         """Initialize logistic regression model.
 
         Args:
@@ -335,7 +388,8 @@ class LogisticRegression:
         # TODO: Implement logistic regression training
 
         n_samples, n_features = X.shape
-        self.weights = np.zeros(n_features)
+        if self.weights is None:
+            self.weights = np.random.randn(n_features) * 0.01
 
         for _ in range(1, self.max_iter):
             linear_model = np.dot(X, self.weights) + self.bias
@@ -390,7 +444,7 @@ class LogisticRegression:
             Loss value
         """
         # TODO: Implement loss function
-        epsilon = 1e-15  # to prevent log(0)
+        epsilon = 1e-10  # to prevent log(0)
         y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
         loss = -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
         return loss
@@ -418,7 +472,7 @@ class LogisticRegression:
 
         return 2 * precision * recall / (precision + recall + 1e-15)
 
-    def binarize_label(self, y: np.ndarray) -> np.ndarray:
+    def label_binarize(self, y: np.ndarray) -> np.ndarray:
         """Binarize labels for binary classification.
 
         Args:
@@ -428,6 +482,7 @@ class LogisticRegression:
             Binarized labels
         """
         # TODO: Implement label binarization
+        return (y > 1000).astype(int)
 
     def get_auroc(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Calculate AUROC score.
@@ -452,7 +507,7 @@ class LogisticRegression:
         tpr = cum_pos / (total_pos + 1e-15)
         fpr = np.cumsum(1 - y_true_sorted) / (total_neg + 1e-15)
 
-        return np.trapezoid(tpr, fpr)
+        return np.clip(np.trapezoid(y=tpr, x=fpr), 0.0, 1.0)
 
     def metric(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Calculate AUROC.
@@ -476,6 +531,7 @@ class LogisticRegression:
         Returns:
             float value of the sigmoid function
         """
+        z = np.clip(z, -500, 500)
         return 1 / (1 + np.exp(-z))
 
 class ModelEvaluator:
@@ -582,325 +638,3 @@ class ModelEvaluator:
         plt.savefig("ROC-Curve-Log_Regr.png", dpi=300, bbox_inches='tight')
         #plt.show()
 
-
-def plot_iteration_loss(losses: list, plot_name: str, model_type: str) -> None:
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(range(len(losses)), losses, marker='o', markersize=2, linestyle='-')
-
-    plt.xlabel("Iteration")
-    plt.ylabel("Loss")
-    plt.title("Loss vs Iteration" + f"\n({model_type})")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(plot_name +".png", dpi=300, bbox_inches='tight')
-    #plt.show()
-
-def tune_hyperparams_log_regr() -> None:
-
-    print("\n\nHyperparameter tuning for Logistic Regression\n")
-    dp = DataProcessor("./")
-    (df_train, df_test) = dp.load_data()
-
-    for dframe in (df_train, df_test):
-        if dp.check_missing_values(dframe) > 0:
-            dp.clean_data(df_train)
-
-    # ========================================= #
-    # Train and Test Data
-    # ========================================= #
-    (X_train, y_train) = dp.extract_features_labels(df_train)
-    X_train_scaled, min_vals, max_vals = dp.normalize(X_train)
-
-    X_test = df_test.iloc[:, ].to_numpy()
-    X_test_scaled, _, _ = dp.normalize(X_test, min_vals, max_vals)
-
-    y_binary = (y_train > 1000).astype(int)
-    log_model = LogisticRegression(learning_rate=0.02, max_iter=50000, prob_threshold = 0.35)
-
-    eval_list= []
-    found = False
-    #for lr in [0.1, 0.08, 0.05, 0.02, 0.01, 0.005]:
-    for lr in [0.08, 0.05, 0.01, 0.005]:
-        if found == False:
-            #for prob in [0.1, 0.2, 0.25, 0.3, 0.35, 0.4]:
-            for prob in [0.1, 0.25, 0.35, 0.4]:
-                if found == False:
-                    for iter in [10000, 25000, 50000]:
-                        print(f"[LR: {lr:6.4f}, prob_thresh: {prob:6.4f}, max_iter: {iter:7d}]", end=' -> ')
-                        log_model.set_max_iter(iter)
-
-                        log_model.set_prob_threshold(prob)
-                        log_model.set_learning_rate(lr)
-
-                        log_model.fit(X_train_scaled, y_binary, print_weights=False)
-
-                        y_pred = log_model.predict(X_train_scaled)
-                        f1_score = log_model.F1_score(y_binary, y_pred)
-
-                        y_pred_probs = log_model.predict_proba(X_train_scaled)
-                        auroc = log_model.get_auroc(y_binary, y_pred_probs)
-
-                        print (f"f1_score = {f1_score:6.4f}", end=' -> ')
-                        print (f"auroc= {auroc:6.4f}")
-
-                        eval_list.append((lr, prob, iter, f1_score, auroc))
-
-                        '''
-                        if f1_score > 0.90 and auroc > 0.90:
-                            print(f"\t{eval_list[-1]}: BREAKING")
-
-                            # Do not break, we want to see all combinations of hyperparams
-                            # that give us desired auroc and f1-score
-                            #found = True
-                            break
-                        '''
-
-                    print("")
-
-def tune_hyperparams_lin_regr() -> None:
-
-    print("\n\nHyperparameter tuning for Linear Regression\n")
-    dp = DataProcessor("./")
-    (df_train, df_test) = dp.load_data()
-
-    for dframe in (df_train, df_test):
-        if dp.check_missing_values(dframe) > 0:
-            dp.clean_data(df_train)
-
-    # ========================================= #
-    # Train and Test Data
-    # ========================================= #
-    (X_train, y_train) = dp.extract_features_labels(df_train)
-    X_train_scaled, min_vals, max_vals = dp.normalize(X_train)
-
-    X_test = df_test.iloc[:, ].to_numpy()
-    X_test_scaled, _, _ = dp.normalize(X_test, min_vals, max_vals)
-
-    y_binary = (y_train > 1000).astype(int)
-
-    #for iter in (1000, 5000, 10000, 50000):
-    #    for lr in (0.1, 0.08, 0.05, 0.01, 0.008, 0.004, 0.001):
-    #        for l2 in (0.1, 0.08, 0.05, 0.02, 0.01, 0.008, 0.005, 0.002, 0.001, 0.0008, 0.0004, 0.0002, 0.0001):
-
-    for iter in (1000, 5000, 10000):
-        for lr in (0.08, 0.05, 0.01, 0.004, 0.001):
-            for l2 in (0.08, 0.01, 0.008, 0.005,  0.0004):
-                #linear_model = LinearRegression(learning_rate = 0.05, max_iter = 1000, l2_lambda=0.0004)
-                linear_model = LinearRegression(learning_rate = lr, max_iter = iter, l2_lambda=l2)
-                linear_model.fit(X_train_scaled, y_train, print_weights=False)
-
-                y_pred = linear_model.predict(X_train_scaled)
-
-                rmse = linear_model.metric(y_train, y_pred)
-
-                plot_name =  "lin_regr_loss_"                 + \
-                            f"_iters_{linear_model.max_iter}" + \
-                            f"_LR_{linear_model.learning_rate}"
-
-                if rmse < 73.0:
-                    print(f"[LR: {lr:6.4f}, max_iter: {iter:7d} l2_lambda: {l2:6.4f}]", end=' --> ')
-                    print("RMSE:", rmse)
-
-                y_test_pred = linear_model.predict(X_test_scaled)
-
-
-
-def main():
-
-
-    # =================================================================== #
-    # Data handling:
-    # =================================================================== #
-
-    # Load data, create data frames for train and test data
-    # The data dir is the same as the source code
-    dp = DataProcessor("./")
-    (df_train, df_test) = dp.load_data()
-
-    # Check for missing values. Drop the rows with missing values
-    for dframe in (df_train, df_test):
-        if dp.check_missing_values(dframe) > 0:
-            dp.clean_data(dframe)
-
-    # =================================================================== #
-    # Train and Test Data
-    # =================================================================== #
-
-    # Extract covariates matric and target vector for training
-    # and test data (In our case test data does not have target var.
-    (X_train, y_train) = dp.extract_features_labels(df_train)
-
-    X_test = df_test.iloc[:, ].to_numpy()
-
-    # Normalize the train test data
-    X_train_scaled, min_vals, max_vals = dp.normalize(X_train)
-    X_test_scaled, _, _ = dp.normalize(X_test, min_vals, max_vals)
-
-    # =================================================================== #
-    # EDA
-    # =================================================================== #
-
-    # Histogram using the raw training data
-    dp.draw_histogram(df_train.iloc[:, :11], "feature_histogram_raw.png")
-
-    # Histogram using the normalized training data
-    #dp.draw_histogram(pd.DataFrame(X_train_scaled), "feature_histogram_scaled.png")
-
-    # Scatter plot for feature PT08.S2(NMHC) V/s feature PTO8.S5(O3)
-    dp.draw_scatter_plot(df_train, 2, 7)
-
-    # Pearson correlation - draw feature heatmap
-    dp.get_pearson_corr(df_train)
-
-
-    # =================================================================== #
-    # Linear Regression
-    # =================================================================== #
-
-    '''
-    # The following function call was used to identify optimums values for
-    # the hyperparameters. Once the values are noted, this function is not
-    # being called anymore, but those hyperparam values are being used
-
-    tune_hyperparams_lin_regr()
-
-    # Update: Re-enabled at the end, with reduced params for demonstrating the process
-    '''
-
-    linear_model = LinearRegression(learning_rate = 0.05, max_iter = 10000, l2_lambda=0.0004)
-
-    linear_model.fit(X_train_scaled, y_train)
-    y_pred = linear_model.predict(X_train_scaled)
-
-    rmse = linear_model.metric(y_train, y_pred)
-    print("\nLinear Regression -  RMSE:", rmse)
-
-    plot_name =  "lin_regr_loss_"                 + \
-                f"_iters_{linear_model.max_iter}" + \
-                f"_LR_{linear_model.learning_rate}"
-
-    plot_iteration_loss(linear_model.losses, plot_name, "Linear Regression")
-
-    y_test_pred = linear_model.predict(X_test_scaled)
-    print(f"Linear Regression: Y_TEST_PRED: {y_test_pred}\n\n")
-
-    # =================================================================== #
-    # Logistic Regression
-    # =================================================================== #
-
-    '''
-    # The following function call was used to identify optimums values for
-    # the hyperparameters. Once the values are noted, this function is not
-    # being called anymore, but those hyperparam values are being used
-
-    tune_hyperparams_log_regr()
-
-    # Update: Re-enabled at the end, with reduced params for demonstrating the process
-    '''
-
-    # =================================================================== #
-    # Train and Test Data
-    # =================================================================== #
-    y_binary = (y_train > 1000).astype(int)
-
-    log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.3500)
-
-    log_model.fit(X_train_scaled, y_binary)
-
-    y_pred = log_model.predict(X_train_scaled)
-    f1_score = log_model.F1_score(y_binary, y_pred)
-
-    y_pred_probs = log_model.predict_proba(X_train_scaled)
-    auroc = log_model.get_auroc(y_binary, y_pred_probs)
-
-    print(f"\nLogistic Regression - f1_score = {f1_score:6.4f}")
-    print(f"Logistic Regression - AUROC= {auroc:6.4f}\n")
-
-    plot_name =  "log_regr_loss_"                  + \
-                f"_iters_{log_model.max_iter}"     + \
-                f"_LR_{log_model.learning_rate}"
-
-    plot_iteration_loss(log_model.losses, plot_name, model_type="Logistic Regression")
-
-    print("\nNow predicting on the test data")
-    y_pred = log_model.predict(X_test_scaled)
-    y_pred_probs = log_model.predict_proba(X_test_scaled)
-
-    print(f"Logistic Regression: Y_PRED_PROBS: {y_pred_probs}\n\n")
-
-    # =================================================================== #
-    # K-Fold Cross Validation
-    # =================================================================== #
-    evaluator = ModelEvaluator(n_splits= 5,  random_state = 42)
-
-    # =================================================================== #
-    # Cross Validation for Linear Regression Model
-    # =================================================================== #
-    linear_scores = evaluator.cross_validation(linear_model, X_train_scaled, y_train)
-    print("\nCross Validation")
-    print("\n   Cross-Validation Linear Regression: Avg RMSE:", np.mean(linear_scores))
-    print("   Cross-Validation Linear Regression: Std Dev RMSE:", np.std(linear_scores), "\n\n\n")
-
-
-    # =================================================================== #
-    # Cross Validation for Logistic Regression Model
-    # =================================================================== #
-    logistic_scores = evaluator.cross_validation(log_model, X_train_scaled, y_binary)
-    f1_scores, aurocs = zip(*logistic_scores)
-    print(f"\n   Cross-Validation Log Regr: Avg F1: {np.mean(f1_scores):6.4f}, Std: {np.std(f1_scores):6.4f}")
-    print(f"   Cross-Validation Log Regr: Avg AUROC: {np.mean(aurocs):6.4f}, Std: {np.std(aurocs):6.4f}")
-
-    # =================================================================== #
-    # ROC Curve
-    # =================================================================== #
-    evaluator = ModelEvaluator()
-    evaluator.plot_roc_per_fold(log_model, X_train_scaled, y_binary)
-
-    # =================================================================== #
-    # Hyperparameter Tuning Linear Regression
-    # =================================================================== #
-    tune_hyperparams_lin_regr()
-
-    # =================================================================== #
-    # Hyperparameter Tuning Logistic Regression
-    # =================================================================== #
-    tune_hyperparams_log_regr()
-
-
-if __name__ == "__main__":
-    main()
-    print("Hello World!")
-
-####################     IGNORE EVEYTHING BELOW THIS LINE     ###################3
-####################     IGNORE EVEYTHING BELOW THIS LINE     ###################3
-####################     IGNORE EVEYTHING BELOW THIS LINE     ###################3
-'''
-    print(f"Data dir: {dp.data_root}")
-    print (df_train.head())
-    print (df_test.head())
-    print(f"#Missing Vals = {num_missing_data}")
-    print(f"#Missing Vals = {num_missing_data}")
-
-    num_ones = sum(1 for x in y_pred if x == 1)
-    print (f"NUM_ONES = {num_ones}")
-    num_zeros = sum(1 for x in y_pred if x == 0)
-    print (f"NUM_ZEROS = {num_zeros}")
-'''
-
-'''
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=50000 , prob_threshold=0.2500)
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=25000 , prob_threshold=0.3000)
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=10000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(learning_rate=0.1000, max_iter=10000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=50000 , prob_threshold=0.2500)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=25000 , prob_threshold=0.3000)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(learning_rate=0.0800, max_iter=10000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=25000 , prob_threshold=0.3000)
-    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=25000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(learning_rate=0.0500, max_iter=10000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(0.0200, max_iter=40000 , prob_threshold=0.3500)
-    #log_model = LogisticRegression(0.0200, max_iter=25000 , prob_threshold=0.4000)
-    #log_model = LogisticRegression(0.0100, max_iter=50000 , prob_threshold=0.4000)
-'''

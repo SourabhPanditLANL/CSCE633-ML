@@ -39,8 +39,7 @@ class DataLoader:
         self.random_state = random_state
         np.random.seed(self.random_state)
 
-        #TODO: Q1:Should init method also load the data and inititlize the data frame?
-        self.data = pd.read_csv(f"{data_root}/bank.csv", delimiter=';') # .data = pd.DataFrame()
+        self.data = pd.read_csv(f"{data_root}/bank.csv", delimiter=';')
         self.data_train = None
         self.data_valid = None
         self.debug_print("init()")
@@ -63,33 +62,56 @@ class DataLoader:
         '''
         You are asked to drop any rows with missing values and map categorical variables to numeric values.
         '''
-        print(f"data_prep: shape before : {self.data.shape}")
+        df = self.data.copy()  # Work on a safe copy
 
-        # Replace "unknown" with mode in each categorical column
-        self.debug_print("data_prep()-1 ")
-        self.data = self.data.copy()  # ← Add this line first
+        # Clean column names
+        df.columns = df.columns.str.strip()
 
-        categorical_cols = self.data.select_dtypes(include=['object']).columns
+        # Drop leakage-prone/uninformative columns
+        #TODO; check if duration and default should be dropped or kept
+        cols_to_drop = ['day', 'duration', 'default']
+        for col in cols_to_drop:
+            if col in df.columns:
+                print(f"DROPPING: {col}")
+                df.drop(columns=[col], inplace=True)
+
+        print(f"data_prep: shape before cleaning: {df.shape}")
+        total = len(df)
+
+        # Replace "unknown" if it occurs in <5% of a column
+        categorical_cols = df.select_dtypes(include=['object']).columns
         for col in categorical_cols:
-            if col != 'poutcome' and col != 'contact':
-                mode = self.data[self.data[col] != 'unknown'][col].mode()
+            unknown_count = (df[col] == 'unknown').sum()
+            unknown_ratio = unknown_count / total
+            if unknown_count > 0 and unknown_ratio < 0.05:
+                mode = df[df[col] != 'unknown'][col].mode()
                 if not mode.empty:
-                    self.data.loc[:, col] = self.data[col].replace('unknown', mode[0])
+                    df.loc[:, col] = df[col].replace('unknown', mode[0])
 
-        self.debug_print("data_prep()-2 ")
+        # Drop any remaining NaNs
+        df.dropna(inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        print(f"data_prep: shape after dropna: {df.shape}")
 
-        self.data.dropna(inplace=True)
-        self.data.reset_index(drop=True, inplace=True)
-        print(f"data_prep: shape after: {self.data.shape}")
-        #self.data = self.data[~self.data.isin(['unknown']).any(axis=1)]
-        print(f"data_prep: shape after after: {self.data.shape}")
+        # Replace -1 in 'pdays' with 0 (or keep if model can learn from it)
+        if 'pdays' in df.columns:
+            df['pdays'] = df['pdays'].replace(-1, 0)
 
-        # Encode categorical variables to integers
-        for col in categorical_cols:
-            self.data[col], _ = pd.factorize(self.data[col])
+        # Optionally store column type indices
+        self.categorical_cols = df.select_dtypes(include=['object']).columns
+        self.categorical_indices = [df.columns.get_loc(col) for col in self.categorical_cols]
 
-        self.debug_print("data_prep()-3")
+        self.non_categorical_cols = df.columns.difference(self.categorical_cols)
 
+        # Encode categorical variables using pd.factorize
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col], _ = pd.factorize(df[col])
+
+        # Final assignment back to self
+        self.data = df
+        self.non_categorical_indices = [df.columns.get_loc(col) for col in self.non_categorical_cols]
+
+        print(f"data_prep: final shape: {df.shape}")
 
     def extract_features_and_label(self, data: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
         '''
@@ -107,17 +129,17 @@ class DataLoader:
         return (X_data, y_data)
 
 
-    def debug_print(self, caller_func):
-        print(f"\nDEBUG-1: {caller_func} - self.data = {self.data.shape}")
+    def debug_print(self, caller):
+        print(f"\nDEBUG-1: {caller} - self.data = {self.data.shape}")
         if (self.data_train is None or self.data_valid is None):
-            print(f"DEBUG-2: {caller_func} - self.data_train = {type(self.data_train)}: self.data_valid = {type(self.data_valid)}")
+            print(f"DEBUG-2: {caller} - train = {type(self.data_train)}: valid = {type(self.data_valid)}")
         else:
-            print(f"DEBUG-2: {caller_func} - self.data_train = {self.data_train.shape}: self.data_valid = {self.data_valid.shape}")
+            print(f"DEBUG-2: {caller} - train = {self.data_train.shape}: valid = {self.data_valid.shape}")
 
         #for col in self.data.columns:
-        #    print (f"\nDEBUG-3: {caller_func} - :\n{self.data[col].value_counts(dropna=False)}")
+        #    print (f"\nDEBUG-3: {caller} - :\n{self.data[col].value_counts(dropna=False)}")
 
-        print(f"DEBUG-3: {caller_func}: Remaining 'unknown's: {(self.data == 'unknown').sum().sum()}")
+        print(f"DEBUG-3: {caller}: Remaining 'unknown's: {(self.data == 'unknown').sum().sum()}")
 
 '''
 Porblem A-2: Classification Tree Inplementation
@@ -163,11 +185,22 @@ class ClassificationTree:
 
         self.tree_root = None
 
-    def split_crit(self, y: np.ndarray) -> float:
+    #def split_crit(self, y: np.ndarray) -> float:
+    def split_crit(self, y: np.ndarray, method: str = "gini") -> float:
         '''
-        Implement the impurity measure of your choice here. Return the impurity value.
+        Computes impurity of labels y using the specified method.
+
+        Args:
+            y (np.ndarray): array of labels
+            method (str): "gini" or "entropy" (default: "gini")
+
+        Returns:
+            float: impurity score
         '''
-        return self.entropy(y)
+        if method == "entropy":
+            return self.entropy(y)
+        else:
+            return self.gini_index(y)
 
     def build_tree(self, X: np.ndarray, y: np.ndarray) -> None:
         '''
@@ -275,6 +308,47 @@ class ClassificationTree:
             gini += p_cls**2
 
         return (1 - gini)
+
+    def split(self, X: np.ndarray, y: np.ndarray, feature_index: int, split_value, is_categorical: bool):
+        '''
+        Splits the dataset (X, y) based on the feature at feature_index.
+
+        If is_categorical is True:
+            - split_value is a set of category values for the left branch
+        If is_categorical is False:
+            - split_value is a numeric threshold
+
+        Returns:
+            X_left, y_left, X_right, y_right
+        '''
+        dataset = np.concatenate((X, y.reshape(-1, 1)), axis=1)
+
+        if is_categorical:
+            left_rows = [row for row in dataset if row[feature_index] in split_value]
+            right_rows = [row for row in dataset if row[feature_index] not in split_value]
+        else:
+            left_rows = [row for row in dataset if row[feature_index] <= split_value]
+            right_rows = [row for row in dataset if row[feature_index] > split_value]
+
+        dataset_left = np.array(left_rows)
+        dataset_right = np.array(right_rows)
+
+        if len(dataset_left) == 0 or len(dataset_right) == 0:
+            return None, None, None, None
+
+        X_left, y_left = dataset_left[:, :-1], dataset_left[:, -1]
+        X_right, y_right = dataset_right[:, :-1], dataset_right[:, -1]
+
+        return X_left, y_left, X_right, y_right
+
+
+    def variance(y):
+        return y.var()
+
+    def Information_gain(y, mask, func=entropy):
+        pass
+
+
 
 def train_XGBoost() -> dict:
     '''

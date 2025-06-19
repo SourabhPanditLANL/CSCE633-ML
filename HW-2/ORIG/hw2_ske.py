@@ -6,14 +6,14 @@ from xgboost import XGBClassifier
 '''
 General Instructions:
 
-1. Do not use any additional libraries. Your code will be tested in a pre-built environment with only 
+1. Do not use any additional libraries. Your code will be tested in a pre-built environment with only
 the library above available.
 
 2. You are expected to fill in the skeleton code precisely as per provided. On top of skeleton code given,
-you may write whatever deemed necessary to complete the assignment. For example, you may define additional 
+you may write whatever deemed necessary to complete the assignment. For example, you may define additional
 default arguments, class parameters, or methods to help you complete the assignment.
 
-3. Some initial steps or definition are given, aiming to help you getting started. As long as you follow 
+3. Some initial steps or definition are given, aiming to help you getting started. As long as you follow
 the argument and return type, you are free to change them as you see fit.
 
 4. Your code should be free of compilation errors. Compilation errors will result in 0 marks.
@@ -26,7 +26,7 @@ Problem A-1: Data Preprocessing and EDA
 class DataLoader:
     '''
     This class will be used to load the data and perform initial data processing. Fill in functions.
-    You are allowed to add any additional functions which you may need to check the data. This class 
+    You are allowed to add any additional functions which you may need to check the data. This class
     will be tested on the pre-built enviornment with only numpy and pandas available.
     '''
 
@@ -46,22 +46,22 @@ class DataLoader:
 
     def data_split(self) -> None:
         '''
-        You are asked to split the training data into train/valid datasets on the ratio of 80/20. 
+        You are asked to split the training data into train/valid datasets on the ratio of 80/20.
         Add the split datasets to self.data_train, self.data_valid. Both of the split should still be pd.DataFrame.
         '''
         pass
 
     def data_prep(self) -> None:
         '''
-        You are asked to drop any rows with missing values and map categorical variables to numeric values. 
+        You are asked to drop any rows with missing values and map categorical variables to numeric values.
         '''
         pass
 
     def extract_features_and_label(self, data: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
         '''
-        This function will be called multiple times to extract features and labels from train/valid/test 
+        This function will be called multiple times to extract features and labels from train/valid/test
         data.
-        
+
         Expected return:
             X_data: np.ndarray of shape (n_samples, n_features) - Extracted features
             y_data: np.ndarray of shape (n_samples,) - Extracted labels
@@ -95,7 +95,7 @@ class ClassificationTree:
             self.split = split
             self.left = left
             self.right = right
-            self.prediction = prediction 
+            self.prediction = prediction
 
         def is_leaf(self):
             return self.prediction is not None
@@ -111,10 +111,10 @@ class ClassificationTree:
         Implement the impurity measure of your choice here. Return the impurity value.
         '''
         pass
-        
+
     def build_tree(self, X: np.ndarray, y: np.ndarray) -> None:
         '''
-        Implement the tree building algorithm here. You can recursivly call this function to build the 
+        Implement the tree building algorithm here. You can recursivly call this function to build the
         tree. After building the tree, store the root node in self.tree_root.
         '''
         pass
@@ -132,10 +132,10 @@ class ClassificationTree:
     def predict(self, X: np.ndarray) -> np.ndarray:
         '''
         Predict classes for multiple samples.
-        
+
         Args:
             X: numpy array with the same columns as the training data
-            
+
         Returns:
             np.ndarray: Array of predictions
         '''
@@ -151,7 +151,7 @@ def train_XGBoost() -> dict:
 
 
 '''
-Initialize the following variable with the best model you have found. This model will be used in testing 
+Initialize the following variable with the best model you have found. This model will be used in testing
 in our pre-built environment.
 '''
 my_best_model = XGBClassifier()

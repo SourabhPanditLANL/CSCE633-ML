@@ -71,7 +71,7 @@ class DataLoader:
 
         categorical_cols = self.data.select_dtypes(include=['object']).columns
         for col in categorical_cols:
-            if col != 'poutcome':
+            if col != 'poutcome' and col != 'contact':
                 mode = self.data[self.data[col] != 'unknown'][col].mode()
                 if not mode.empty:
                     self.data.loc[:, col] = self.data[col].replace('unknown', mode[0])
@@ -81,7 +81,7 @@ class DataLoader:
         self.data.dropna(inplace=True)
         self.data.reset_index(drop=True, inplace=True)
         print(f"data_prep: shape after: {self.data.shape}")
-        self.data = self.data[~self.data.isin(['unknown']).any(axis=1)]
+        #self.data = self.data[~self.data.isin(['unknown']).any(axis=1)]
         print(f"data_prep: shape after after: {self.data.shape}")
 
         # Encode categorical variables to integers

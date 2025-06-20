@@ -693,56 +693,6 @@ def grid_search_linregr(X_train_scaled, y_train, X_val_scaled, y_val) -> None:
 
     print("L2-Norm Regularization Grid Search Finished\n")
 
-'''
-from sklearn.metrics import mean_squared_error
-from typing import Any, Callable, List, Tuple
-def cross_validate_model(X: np.ndarray,
-                         y: np.ndarray,
-                         model_fn: Callable[[], Any],
-                         n_splits: int = 5,
-                         scale: bool = True,
-                         random_state: int = 42) -> Tuple[List[float], float]:
-    """
-    Perform K-Fold cross-validation for a regression model.
-
-    Args:
-        X: Feature matrix of shape (n_samples, n_features)
-        y: Target vector of shape (n_samples,)
-        model_fn: A function that returns a fresh instance of the regression model (e.g., lambda: Lasso(alpha=0.1))
-        n_splits: Number of folds for K-Fold cross-validation
-        scale: Whether to apply StandardScaler
-        random_state: Random seed for reproducibility
-
-    Returns:
-        Tuple containing:
-            - List of RMSE scores from each fold
-            - Average RMSE across folds
-    """
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    rmse_scores = []
-
-    for train_indices, val_indices in kf.split(X):
-        X_train, X_val = X[train_indices], X[val_indices]
-        y_train, y_val = y[train_indices], y[val_indices]
-
-        # Feature scaling
-        if scale:
-            scaler = StandardScaler()
-            X_train = scaler.fit_transform(X_train)
-            X_val = scaler.transform(X_val)
-
-        # Train model
-        model = model_fn()
-        model.fit(X_train, y_train)
-
-        # Predict and evaluate
-        y_pred = model.predict(X_val)
-        rmse = np.sqrt(mean_squared_error(y_val, y_pred))
-        rmse_scores.append(rmse)
-
-    avg_rmse = np.mean(rmse_scores)
-    return rmse_scores, avg_rmse
-'''
 
 def main():
 

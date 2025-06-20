@@ -9,7 +9,6 @@ hyp_param_list_idx = None
 
 ##TODO: Delete this flag
 hardcoded = False
-drop_columns = False
 
 '''
 General Instructions:
@@ -35,6 +34,8 @@ class DataLoader:
     # Static variables
     st_categorical_cols = []
     st_categorical_indices = []
+    st_non_categorical_cols = []
+    st_non_categorical_indices = []
     '''
     This class will be used to load the data and perform initial data processing. Fill in functions.
     You are allowed to add any additional functions which you may need to check the data. This class
@@ -59,7 +60,7 @@ class DataLoader:
         else:
             self.replace_unknown = hyp_param_list[hyp_param_list_idx][0]    ##TODO: Hyperparam
 
-        #print(f"\nCHECK: REPLACE: {self.replace_unknown}")
+        print(f"\nCHECK: REPLACE: {self.replace_unknown}")
         #print (f"HYP: {hyp_param_list[hyp_param_list_idx]}")
         #self.debug_print("init()")
 
@@ -69,7 +70,6 @@ class DataLoader:
         Add the split datasets to self.data_train, self.data_valid. Both of the split should still be pd.DataFrame.
         '''
 
-        '''
         # Shuffle the data
         shuffled_data = self.data.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
@@ -77,47 +77,6 @@ class DataLoader:
         self.data_train = shuffled_data.iloc[:split_idx]
         self.data_valid = shuffled_data.iloc[split_idx:]
         #self.debug_print("data_split()")
-
-
-        pos = self.data_train[self.data_train['y'] == 1]
-        neg = self.data_train[self.data_train['y'] == 0]
-
-        # Oversample positives to match negatives
-        #pos_upsampled = pos.sample(n=int(len(neg)/2), replace=True, random_state=self.random_state)
-        pos_upsampled = pos.sample(n=int(len(neg)), replace=True, random_state=self.random_state)
-
-        # Recombine and shuffle
-        self.data_train = pd.concat(
-              [neg, pos_upsampled]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-        '''
-
-        ## Train and Validation Split using Strata
-        # Separate class 0 and class 1
-        class_0 = self.data[self.data['y'] == 0]
-        class_1 = self.data[self.data['y'] == 1]
-
-        # Shuffle both separately
-        class_0 = class_0.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-        class_1 = class_1.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-
-        # Compute split index for each class
-        split_0 = int(0.8 * len(class_0))
-        split_1 = int(0.8 * len(class_1))
-
-        # Stratified train/valid
-        train_0 = class_0.iloc[:split_0]
-        valid_0 = class_0.iloc[split_0:]
-
-        train_1 = class_1.iloc[:split_1]
-        valid_1 = class_1.iloc[split_1:]
-
-        # Combine and shuffle
-        self.data_train = pd.concat(
-                [train_0, train_1]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-        self.data_valid = pd.concat(
-                [valid_0, valid_1]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-
-
 
     def data_prep(self) -> None:
         '''
@@ -130,13 +89,11 @@ class DataLoader:
 
         # Drop leakage-prone/uninformative columns
         #TODO; check if duration and default should be dropped or kept
-
-        if drop_columns == True:
-            cols_to_drop = ['day', 'duration', 'default']
-            for col in cols_to_drop:
-                if col in df.columns:
-                    #print(f"DROPPING: {col}")
-                    df.drop(columns=[col], inplace=True)
+        cols_to_drop = ['day', 'duration', 'default']
+        for col in cols_to_drop:
+            if col in df.columns:
+                #print(f"DROPPING: {col}")
+                df.drop(columns=[col], inplace=True)
 
         #print(f"data_prep: shape before cleaning: {df.shape}")
         total = len(df)
@@ -161,33 +118,20 @@ class DataLoader:
         if 'pdays' in df.columns:
             df['pdays'] = df['pdays'].replace(-1, 0)
 
-
-        print(f"YYYY Before: {df['y']}")
-        #Encode categorical variables using pd.factorize
-        for col in df.select_dtypes(include=['object']).columns:
-            df[col], _ = pd.factorize(df[col])
-
-
-        # One Hot Encoding
-        #df['y'] = df['y'].map({'yes': 1, 'no': 0})
-        '''
-        X = df.drop('y', axis=1)
-        y = df['y']
-
-        X_encoded = pd.get_dummies(X, drop_first=True)
-        df = pd.concat([X_encoded, y], axis=1)
-        '''
-        print(f"DEBUG {type(df)}, {df.shape}")
-
-
-        print(f"YYYY After: {sum(df['y']==1)}")
-
-        # Final assignment back to self
-        self.data = df
-
         # Optionally store column type indices
         DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
         DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
+
+        DataLoader.st_non_categorical_cols = df.columns.difference(DataLoader.st_categorical_cols)
+        DataLoader.st_non_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_non_categorical_cols]
+
+        # Encode categorical variables using pd.factorize
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col], _ = pd.factorize(df[col])
+
+        # Final assignment back to self
+        self.data = df
+        self.st_non_categorical_indices = [df.columns.get_loc(col) for col in self.st_non_categorical_cols]
 
         #print(f"data_prep: final shape: {df.shape}")
 
@@ -261,6 +205,7 @@ class ClassificationTree:
         self.tree_root = None
         self.categorical_indices = DataLoader.st_categorical_indices
 
+
         if hardcoded == True:
             self.max_depth = 5                                              ##TODO: Hyperparam
             self.min_samples_split = 10                                     ##TODO: Hyperparam
@@ -270,8 +215,7 @@ class ClassificationTree:
             self.min_samples_split = hyp_param_list[hyp_param_list_idx][2]  ##TODO: Hyperparam
             self.use_entropy = hyp_param_list[hyp_param_list_idx][3]        ##TODO: Hyperparam
 
-        #print (f"CHECK: {self.max_depth}: {self.min_samples_split}: {self.use_entropy}")
-
+        print (f"CHECK: {self.max_depth}: {self.min_samples_split}: {self.use_entropy}")
     def split_crit(self, y: np.ndarray) -> float:
         '''
         Computes impurity of labels y using the specified method.

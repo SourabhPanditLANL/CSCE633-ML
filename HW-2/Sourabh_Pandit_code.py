@@ -3,13 +3,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from xgboost import XGBClassifier
 
-##TODO: Hyperparam index
-hyp_param_list = None
-hyp_param_list_idx = None
 
-##TODO: Delete this flag
-hardcoded = False
-drop_columns = False
+# Remove - begin
+import sys                          ##TODO:  remove this
+from itertools import product       ##TODO: REmove this
+
+replace_unknown = [False, True]
+max_depths = range(3, 8, 1)
+sample_split_size = range(4, 20, 1)
+use_entropy = [False] #, True]
+drop_cols = [False, True]
+hyp_list = list(product(replace_unknown, max_depths, sample_split_size, use_entropy, drop_cols))
+hyp_idx = 100000
+
+hardcoded = False       ##TODO: Delete this flag
+# Remove - end
 
 '''
 General Instructions:
@@ -54,14 +62,14 @@ class DataLoader:
         self.data_train = None
         self.data_valid = None
 
+        ##TODO: Hyperparam and flag
         if hardcoded == True:
-            self.replace_unknown = False                                    ##TODO: Hyperparam
+            self.replace_unknown = False
+            self.drop_cols = False
         else:
-            self.replace_unknown = hyp_param_list[hyp_param_list_idx][0]    ##TODO: Hyperparam
+            self.replace_unknown = hyp_list[hyp_idx][0]
+            self.drop_cols = hyp_list[hyp_idx][4]
 
-        #print(f"\nCHECK: REPLACE: {self.replace_unknown}")
-        #print (f"HYP: {hyp_param_list[hyp_param_list_idx]}")
-        #self.debug_print("init()")
 
     def data_split(self) -> None:
         '''
@@ -69,42 +77,16 @@ class DataLoader:
         Add the split datasets to self.data_train, self.data_valid. Both of the split should still be pd.DataFrame.
         '''
 
-        '''
-        # Shuffle the data
-        shuffled_data = self.data.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-
-        split_idx = int(0.8 * len(shuffled_data))
-        self.data_train = shuffled_data.iloc[:split_idx]
-        self.data_valid = shuffled_data.iloc[split_idx:]
-        #self.debug_print("data_split()")
-
-
-        pos = self.data_train[self.data_train['y'] == 1]
-        neg = self.data_train[self.data_train['y'] == 0]
-
-        # Oversample positives to match negatives
-        #pos_upsampled = pos.sample(n=int(len(neg)/2), replace=True, random_state=self.random_state)
-        pos_upsampled = pos.sample(n=int(len(neg)), replace=True, random_state=self.random_state)
-
-        # Recombine and shuffle
-        self.data_train = pd.concat(
-              [neg, pos_upsampled]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-        '''
-
-        ## Train and Validation Split using Strata
-        # Separate class 0 and class 1
+        ## Train and Validation Split using Strata: Separate class 0 and class 1
         class_0 = self.data[self.data['y'] == 0]
         class_1 = self.data[self.data['y'] == 1]
 
-        # Shuffle both separately
         class_0 = class_0.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
         class_1 = class_1.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
-        # Compute split index for each class
         split_0 = int(0.8 * len(class_0))
         split_1 = int(0.8 * len(class_1))
 
-        # Stratified train/valid
         train_0 = class_0.iloc[:split_0]
         valid_0 = class_0.iloc[split_0:]
 
@@ -118,57 +100,48 @@ class DataLoader:
                 [valid_0, valid_1]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
 
-
     def data_prep(self) -> None:
         '''
         You are asked to drop any rows with missing values and map categorical variables to numeric values.
         '''
-        df = self.data.copy()  # Work on a safe copy
 
-        # Clean column names
-        df.columns = df.columns.str.strip()
+        df = self.data.copy()                   # Work on a safe copy
+        df.columns = df.columns.str.strip()     # Clean column names
 
-        # Drop leakage-prone/uninformative columns
+        print(f"data_prep: shape before cleaning: {df.shape}")
+
+        # Drop uninformative columns
         #TODO; check if duration and default should be dropped or kept
 
-        if drop_columns == True:
-            cols_to_drop = ['day', 'duration', 'default']
-            for col in cols_to_drop:
-                if col in df.columns:
-                    #print(f"DROPPING: {col}")
-                    df.drop(columns=[col], inplace=True)
+        for col in ['day', 'duration', 'default']:
+            if self.drop_cols  and col in df.columns:
+                df.drop(columns=[col], inplace=True)
 
-        #print(f"data_prep: shape before cleaning: {df.shape}")
-        total = len(df)
-
-        if self.replace_unknown == True:
-            # Replace "unknown" if it occurs in <5% of a column
-            categorical_cols = df.select_dtypes(include=['object']).columns
-            for col in categorical_cols:
+        if self.replace_unknown:
+            for col in df.select_dtypes(include=['object']).columns:
                 unknown_count = (df[col] == 'unknown').sum()
-                unknown_ratio = unknown_count / total
+                unknown_ratio = unknown_count / len(df)
                 if unknown_count > 0 and unknown_ratio < 0.05:
                     mode = df[df[col] != 'unknown'][col].mode()
                     if not mode.empty:
                         df.loc[:, col] = df[col].replace('unknown', mode[0])
 
-        # Drop any remaining NaNs
-        df.dropna(inplace=True)
+        df.dropna(inplace=True)                 # Drop any remaining NaNs
         df.reset_index(drop=True, inplace=True)
-        #print(f"data_prep: shape after dropna: {df.shape}")
+        print(f"data_prep: shape after dropna: {df.shape}")
 
         # Replace -1 in 'pdays' with 0 (or keep if model can learn from it)
-        if 'pdays' in df.columns:
-            df['pdays'] = df['pdays'].replace(-1, 0)
+        #TODO: is the even needed?
+        #if 'pdays' in df.columns:
+        #    df['pdays'] = df['pdays'].replace(-1, 0)
 
-
-        print(f"YYYY Before: {df['y']}")
         #Encode categorical variables using pd.factorize
         for col in df.select_dtypes(include=['object']).columns:
             df[col], _ = pd.factorize(df[col])
 
 
-        # One Hot Encoding
+        #TODO: enable/disable this
+        #One Hot Encoding
         #df['y'] = df['y'].map({'yes': 1, 'no': 0})
         '''
         X = df.drop('y', axis=1)
@@ -177,19 +150,13 @@ class DataLoader:
         X_encoded = pd.get_dummies(X, drop_first=True)
         df = pd.concat([X_encoded, y], axis=1)
         '''
-        print(f"DEBUG {type(df)}, {df.shape}")
 
-
-        print(f"YYYY After: {sum(df['y']==1)}")
-
-        # Final assignment back to self
-        self.data = df
-
-        # Optionally store column type indices
         DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
         DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
 
-        #print(f"data_prep: final shape: {df.shape}")
+        print(f"data_prep: final shape: {df.shape}")
+        self.data = df
+
 
     def extract_features_and_label(self, data: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
         '''
@@ -201,22 +168,7 @@ class DataLoader:
             y_data: np.ndarray of shape (n_samples,) - Extracted labels
         '''
 
-        y_data = data['y'].values
-        X_data = data.drop(columns=['y']).values
-        #print(f"Shape: {X_data.shape}, {y_data.shape}")
-        return (X_data, y_data)
-
-    def debug_print(self, caller):
-        print(f"\nDEBUG-1: {caller} - self.data = {self.data.shape}")
-        if (self.data_train is None or self.data_valid is None):
-            print(f"DEBUG-2: {caller} - train = {type(self.data_train)}: valid = {type(self.data_valid)}")
-        else:
-            print(f"DEBUG-2: {caller} - train = {self.data_train.shape}: valid = {self.data_valid.shape}")
-
-        #for col in self.data.columns:
-        #    print (f"\nDEBUG-3: {caller} - :\n{self.data[col].value_counts(dropna=False)}")
-
-        print(f"DEBUG-3: {caller}: Remaining 'unknown's: {(self.data == 'unknown').sum().sum()}")
+        return (data['y'].values, data.drop(columns=['y']).values)
 
 '''
 Porblem A-2: Classification Tree Inplementation
@@ -261,14 +213,15 @@ class ClassificationTree:
         self.tree_root = None
         self.categorical_indices = DataLoader.st_categorical_indices
 
+        ##TODO: Hyperparam and flag
         if hardcoded == True:
-            self.max_depth = 5                                              ##TODO: Hyperparam
-            self.min_samples_split = 10                                     ##TODO: Hyperparam
-            self.use_entropy = False                                        ##TODO: Hyperparam
+            self.max_depth = 5
+            self.min_samples_split = 10
+            self.use_entropy = False
         else:
-            self.max_depth = hyp_param_list[hyp_param_list_idx][1]          ##TODO: Hyperparam
-            self.min_samples_split = hyp_param_list[hyp_param_list_idx][2]  ##TODO: Hyperparam
-            self.use_entropy = hyp_param_list[hyp_param_list_idx][3]        ##TODO: Hyperparam
+            self.max_depth = hyp_list[hyp_idx][1]
+            self.min_samples_split = hyp_list[hyp_idx][2]
+            self.use_entropy = hyp_list[hyp_idx][3]
 
         #print (f"CHECK: {self.max_depth}: {self.min_samples_split}: {self.use_entropy}")
 
@@ -624,3 +577,42 @@ def compute_f1_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     f1 = 2 * (precision * recall) / (precision + recall)
     return f1
 
+
+
+
+
+
+def main():
+    global hyp_idx
+
+    for hyp_idx in range(0,len(hyp_list)):
+        loader = DataLoader("./", 42)
+        loader.data_prep()
+        loader.data_split()
+
+        X_train, y_train = loader.extract_features_and_label(loader.data_train)
+        X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+
+        decision_tree = ClassificationTree(random_state = 42);
+    exit(0)
+
+    decision_tree.build_tree(X_train, y_train)
+    y_pred = decision_tree.predict(X_valid)
+
+    accuracy  = (y_pred == y_valid).mean()
+    prec = precision(y_valid, y_pred)
+    rec =  recall(y_valid, y_pred)
+    f1 = compute_f1_score(y_valid, y_pred)
+    #print("HYP: Validation Accuracy:", accuracy)
+
+    #print(f"HYP: Validation F1-score: {f1:.4f} for {hyp_list[arg_idx]}")
+
+    #print("HYP: Precision:", precision(y_valid, y_pred))
+    #print("HYP: Validatio: Recall:", recall(y_valid, y_pred))
+
+    print(f"HYP: A/P/R/F1: {accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[arg_idx]}")
+    print("Hello World!")
+
+if __name__ == "__main__":
+     main()

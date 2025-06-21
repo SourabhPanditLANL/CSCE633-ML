@@ -4,19 +4,22 @@ import matplotlib.pyplot as plt
 from xgboost import XGBClassifier
 
 
-# Remove - begin
-import sys                          ##TODO:  remove this
-from itertools import product       ##TODO: REmove this
+# SP Remove the following - begin
+from itertools import product       ##TODO: Remove this after testing is complete
 
+# Grid Search Options
 replace_unknown = [False, True]
 max_depths = range(3, 8, 1)
-sample_split_size = range(4, 20, 1)
-use_entropy = [False] #, True]
+sample_split_size = range(3, 20, 1)
+use_entropy = [False, True]
 drop_cols = [False, True]
-hyp_list = list(product(replace_unknown, max_depths, sample_split_size, use_entropy, drop_cols))
-hyp_idx = 100000
 
-hardcoded = False       ##TODO: Delete this flag
+#Hyperparameter list with all combination of Grid search options
+hyp_list = list(product(replace_unknown, max_depths, sample_split_size, use_entropy, drop_cols))
+hyp_idx = -1
+
+#hardcoded = False       ##TODO: Delete this flag
+hardcoded = True        ##TODO: Delete this flag
 # Remove - end
 
 '''
@@ -64,9 +67,12 @@ class DataLoader:
 
         ##TODO: Hyperparam and flag
         if hardcoded == True:
+            #print(f"HARDCODED is {hardcoded} - DataLoader ")
             self.replace_unknown = False
             self.drop_cols = False
+            self.upsample_train_data = True
         else:
+            #self.upsample_train_data = False
             self.replace_unknown = hyp_list[hyp_idx][0]
             self.drop_cols = hyp_list[hyp_idx][4]
 
@@ -81,24 +87,79 @@ class DataLoader:
         class_0 = self.data[self.data['y'] == 0]
         class_1 = self.data[self.data['y'] == 1]
 
+        ## Shuffle each class, all samples
         class_0 = class_0.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
         class_1 = class_1.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
-        split_0 = int(0.8 * len(class_0))
-        split_1 = int(0.8 * len(class_1))
+        ## Indices to split each class in 80/20
+        split_0_idx = int(0.8 * len(class_0))
+        split_1_idx = int(0.8 * len(class_1))
 
-        train_0 = class_0.iloc[:split_0]
-        valid_0 = class_0.iloc[split_0:]
+        ## Training and Validation data from class 0
+        train_0 = class_0.iloc[:split_0_idx]
+        valid_0 = class_0.iloc[split_0_idx:]
 
-        train_1 = class_1.iloc[:split_1]
-        valid_1 = class_1.iloc[split_1:]
+        ## Training and Validation data from class 1
+        train_1 = class_1.iloc[:split_1_idx]
+        valid_1 = class_1.iloc[split_1_idx:]
 
-        # Combine and shuffle
+        # Combine the training data from two classes and shuffle again
         self.data_train = pd.concat(
                 [train_0, train_1]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
+
+        # Combine the validation data from two classes and shuffle again
         self.data_valid = pd.concat(
                 [valid_0, valid_1]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
+        #TODO: Upsampling/Oversampling minority class
+        ## We have imbalanced data and need to upsample the 'yes' y-values
+        if self.upsample_train_data == True:
+            pos = self.data_train[self.data_train['y'] == 1]
+            neg = self.data_train[self.data_train['y'] == 0]
+
+            # Oversample positives to match negatives
+            pos_upsampled = pos.sample(n=int(len(neg)), replace=True, random_state=self.random_state)
+
+            # Recombine and shuffle
+            self.data_train = pd.concat(
+                  [neg, pos_upsampled]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
+
+
+    def plot_histogram(self):
+
+        cols = self.data.columns
+        num_cols = len(cols)
+        plot_per_row = 4  # Number of plots per row
+
+        if (num_cols/plot_per_row) > int(num_cols/plot_per_row):
+            num_plot_rows = int(num_cols / plot_per_row + 1)
+        else:
+            num_plot_rows = int(num_cols / plot_per_row)
+
+        fig, axes = plt.subplots(num_plot_rows, plot_per_row, figsize=(5 * plot_per_row, 4 * num_plot_rows))
+        axes = axes.flatten()
+
+        for i, col in enumerate(cols):
+            ax = axes[i]
+            if self.data[col].dtype == 'object' or self.data[col].nunique() < 10:
+                # Bar plot for categorical
+                self.data[col].value_counts().plot( kind='bar', ax=ax, edgecolor='black')
+                ax.set_ylabel("Count")
+            else:
+                # Histogram for numeric
+                self.data[col].plot( kind='hist', bins=30, ax=ax, edgecolor='black')
+                ax.set_ylabel("Frequency")
+
+            ax.set_title(col)
+            ax.set_xlabel(col)
+
+        # Hide any unused subplots
+        for j in range(i + 1, len(axes)):
+            fig.delaxes(axes[j])
+
+        plt.tight_layout()
+        plt.savefig("histogram.png", dpi=300, format="png")
+        #plt.show()
 
     def data_prep(self) -> None:
         '''
@@ -108,11 +169,7 @@ class DataLoader:
         df = self.data.copy()                   # Work on a safe copy
         df.columns = df.columns.str.strip()     # Clean column names
 
-        print(f"data_prep: shape before cleaning: {df.shape}")
-
-        # Drop uninformative columns
         #TODO; check if duration and default should be dropped or kept
-
         for col in ['day', 'duration', 'default']:
             if self.drop_cols  and col in df.columns:
                 df.drop(columns=[col], inplace=True)
@@ -128,14 +185,13 @@ class DataLoader:
 
         df.dropna(inplace=True)                 # Drop any remaining NaNs
         df.reset_index(drop=True, inplace=True)
-        print(f"data_prep: shape after dropna: {df.shape}")
 
         # Replace -1 in 'pdays' with 0 (or keep if model can learn from it)
         #TODO: is the even needed?
         #if 'pdays' in df.columns:
         #    df['pdays'] = df['pdays'].replace(-1, 0)
 
-        #Encode categorical variables using pd.factorize
+        # Map categorical data to numerical values
         for col in df.select_dtypes(include=['object']).columns:
             df[col], _ = pd.factorize(df[col])
 
@@ -146,15 +202,12 @@ class DataLoader:
         '''
         X = df.drop('y', axis=1)
         y = df['y']
-
         X_encoded = pd.get_dummies(X, drop_first=True)
         df = pd.concat([X_encoded, y], axis=1)
         '''
 
         DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
         DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
-
-        print(f"data_prep: final shape: {df.shape}")
         self.data = df
 
 
@@ -168,7 +221,7 @@ class DataLoader:
             y_data: np.ndarray of shape (n_samples,) - Extracted labels
         '''
 
-        return (data['y'].values, data.drop(columns=['y']).values)
+        return (data.drop(columns=['y']).values, data['y'].values)
 
 '''
 Porblem A-2: Classification Tree Inplementation
@@ -193,6 +246,7 @@ class ClassificationTree:
             right: Node - Right child node
             prediction: (any) - Prediction value if the node is a leaf
             '''
+
             self.split = split
             self.left = left
             self.right = right
@@ -215,15 +269,15 @@ class ClassificationTree:
 
         ##TODO: Hyperparam and flag
         if hardcoded == True:
-            self.max_depth = 5
-            self.min_samples_split = 10
-            self.use_entropy = False
+            #print(f"HARDCODED is {hardcoded} - Tree")
+            self.max_depth = 6
+            self.min_samples_split = 14
+            self.use_entropy = True
         else:
             self.max_depth = hyp_list[hyp_idx][1]
             self.min_samples_split = hyp_list[hyp_idx][2]
             self.use_entropy = hyp_list[hyp_idx][3]
 
-        #print (f"CHECK: {self.max_depth}: {self.min_samples_split}: {self.use_entropy}")
 
     def split_crit(self, y: np.ndarray) -> float:
         '''
@@ -258,25 +312,33 @@ class ClassificationTree:
             Node - The constructed node (either split node or leaf node)
         '''
 
-        # Pure node: all labels are the same
+        # At a pure node, (all labels are the same), No need to split further,
+        # it is a leaf node and we can return prediction
         if np.unique(y).size == 1:
             return self.Node(prediction=y[0])
 
-        # Stop condition: minimum samples or maximum depth reached
+        # Alternately, stop condition: minimum samples or maximum depth reached
+        # We can't split further, it is a leaf node and we can return prediction
         if len(y) < self.min_samples_split or depth >= self.max_depth:
             majority_class = np.bincount(y.astype(int)).argmax()
             return self.Node(prediction=majority_class)
 
-        # Find the best split
+        # Find the best split.
         split_result = self.search_best_split(X, y)
+
+        # If we can't split, prediction will be the majority class in the node
         if split_result is None:
             majority_class = np.bincount(y.astype(int)).argmax()
             return self.Node(prediction=majority_class)
 
+        # if we can split, split_result contains feature_index, split_value and
+        # flag for categorical column
         feature_index, split_value, is_categorical = split_result
 
-        # Apply the split
+        # We have the best split params, now use them to actually split the data
         X_left, y_left, X_right, y_right = self.split(X, y, feature_index, split_value, is_categorical)
+
+        ## Splitting makes no sense if all data end up in either left or right node alone.
         if X_left is None or X_right is None:
             majority_class = np.bincount(y.astype(int)).argmax()
             return self.Node(prediction=majority_class)
@@ -300,62 +362,7 @@ class ClassificationTree:
             (feature_index, split_value, is_categorical) if a split is found,
             else None
         '''
-        '''
-        best_gain = -1
-        best_split = None
-        parent_impurity = self.split_crit(y)
 
-        n_samples, n_features = X.shape
-
-        for feature_index in range(n_features):
-            feature_values = X[:, feature_index]
-            unique_values = np.unique(feature_values)
-
-            is_categorical = feature_index in self.categorical_indices
-
-            if is_categorical:
-                # Try 1-vs-rest splits
-                for val in unique_values:
-                    left_set = {val}
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set, is_categorical=True)
-                    if X_left is None or X_right is None:
-                        continue
-
-                    n_left, n_right = len(y_left), len(y_right)
-                    weighted_impurity = (
-                        n_left * self.split_crit(y_left) +
-                        n_right * self.split_crit(y_right)
-                    ) / (n_left + n_right)
-
-                    gain = parent_impurity - weighted_impurity
-                    if gain > best_gain:
-                        best_gain = gain
-                        best_split = (feature_index, left_set, True)
-
-            else:
-                # Try thresholds between sorted values
-                sorted_vals = np.sort(unique_values)
-                for i in range(1, len(sorted_vals)):
-                    threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, threshold, is_categorical=False)
-                    if X_left is None or X_right is None:
-                        continue
-
-                    n_left, n_right = len(y_left), len(y_right)
-                    weighted_impurity = (
-                        n_left * self.split_crit(y_left) +
-                        n_right * self.split_crit(y_right)
-                    ) / (n_left + n_right)
-
-                    gain = parent_impurity - weighted_impurity
-                    if gain > best_gain:
-                        best_gain = gain
-                        best_split = (feature_index, threshold, False)
-
-        return best_split  # or None if no good split found
-        '''
-
-    def search_best_split(self, X: np.ndarray, y: np.ndarray):
         best_gain = -1
         best_split = None
 
@@ -396,7 +403,6 @@ class ClassificationTree:
 
         return best_split
 
-        pass
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         '''
@@ -436,7 +442,6 @@ class ClassificationTree:
                 return self._predict_one(x, node.right)
 
 
-
     def entropy(self, y):
         entropy = 0
         class_labels = np.unique(y)
@@ -469,6 +474,8 @@ class ClassificationTree:
         Returns:
             X_left, y_left, X_right, y_right
         '''
+
+
         dataset = np.concatenate((X, y.reshape(-1, 1)), axis=1)
 
         if is_categorical:
@@ -489,9 +496,6 @@ class ClassificationTree:
 
         return X_left, y_left, X_right, y_right
 
-
-    def variance(y):
-        return y.var()
 
     def information_gain(self, y, y_left, y_right):
         '''
@@ -526,7 +530,42 @@ def train_XGBoost() -> dict:
     See instruction for implementation details. This function will be tested on the pre-built enviornment
     with numpy, pandas, xgboost available.
     '''
-    pass
+    alpha_vals = [1e-3, 1e-2, 1e-1, 1, 1e1, 1e2, 1e3]
+    results = {}
+
+    for alpha in alpha_vals:
+        f1_scores = []
+
+        for i in range(100):
+            loader = DataLoader("./", random_state=i)  # Change seed per iteration
+            loader.data_prep()
+            loader.data_split()
+
+            X_train, y_train = loader.extract_features_and_label(loader.data_train)
+            X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+            model = XGBClassifier(
+                eval_metric='logloss',
+                reg_lambda=alpha,
+                random_state=42
+            )
+
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_valid)
+            f1 = compute_f1_score(y_valid, y_pred)
+            f1_scores.append(f1)
+
+        avg_f1 = np.mean(f1_scores)
+        results[alpha] = avg_f1
+        print(f"Alpha={alpha}: Avg F1 = {avg_f1:.4f}")
+
+    best_alpha = max(results, key=results.get)
+    print(f"\n Best alpha: {best_alpha} with Avg F1 = {results[best_alpha]:.4f}")
+
+    return {
+        "alpha_scores": results,
+        "best_alpha": best_alpha
+    }
 
 
 '''
@@ -577,41 +616,72 @@ def compute_f1_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     f1 = 2 * (precision * recall) / (precision + recall)
     return f1
 
-
-
-
-
-
-def main():
+def grid_search():
+    '''
     global hyp_idx
+    max_runs = 0
+    if hardcoded == True:
+        max_runs = 1
+    else: #hardcoded == False:
+        max_runs = len(hyp_list)
 
-    for hyp_idx in range(0,len(hyp_list)):
+    #for hyp_idx in range(0,len(hyp_list)):
+    for hyp_idx in range(0,max_runs):
         loader = DataLoader("./", 42)
+        loader.plot_histogram()
+
         loader.data_prep()
         loader.data_split()
 
         X_train, y_train = loader.extract_features_and_label(loader.data_train)
         X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
 
-
         decision_tree = ClassificationTree(random_state = 42);
-    exit(0)
+        decision_tree.build_tree(X_train, y_train)
+        y_pred = decision_tree.predict(X_valid)
 
-    decision_tree.build_tree(X_train, y_train)
-    y_pred = decision_tree.predict(X_valid)
+        accuracy  = (y_pred == y_valid).mean()
+        prec = precision(y_valid, y_pred)
+        rec =  recall(y_valid, y_pred)
+        f1 = compute_f1_score(y_valid, y_pred)
 
-    accuracy  = (y_pred == y_valid).mean()
+        print(f"HYP: A/P/R/F1: {accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}", flush=True)
+    '''
+
+def main():
+
+    grid_search()
+
+    results = train_XGBoost()
+    best_alpha = results["best_alpha"]
+
+    loader = DataLoader("./", random_state=42)
+    loader.data_prep()
+    loader.data_split()
+
+    X_train, y_train = loader.extract_features_and_label(loader.data_train)
+    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+    my_best_model = XGBClassifier(
+        eval_metric='logloss',
+        reg_lambda=best_alpha,
+        random_state=42
+    )
+    my_best_model.fit(X_train, y_train)
+    print(f"\n✅ Final model trained with reg_alpha = {best_alpha}")
+
+    # Predict and evaluate
+    y_pred = my_best_model.predict(X_valid)
+    accuracy = (y_pred == y_valid).mean()
     prec = precision(y_valid, y_pred)
-    rec =  recall(y_valid, y_pred)
+    rec = recall(y_valid, y_pred)
     f1 = compute_f1_score(y_valid, y_pred)
-    #print("HYP: Validation Accuracy:", accuracy)
 
-    #print(f"HYP: Validation F1-score: {f1:.4f} for {hyp_list[arg_idx]}")
-
-    #print("HYP: Precision:", precision(y_valid, y_pred))
-    #print("HYP: Validatio: Recall:", recall(y_valid, y_pred))
-
-    print(f"HYP: A/P/R/F1: {accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[arg_idx]}")
+    print(f"\n📊 my_best_model Evaluation:")
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Precision: {prec:.4f}")
+    print(f"Recall: {rec:.4f}")
+    print(f"F1 Score: {f1:.4f}")
     print("Hello World!")
 
 if __name__ == "__main__":

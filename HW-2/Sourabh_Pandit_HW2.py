@@ -3,24 +3,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from xgboost import XGBClassifier
 
-
-# SP Remove the following - begin
-from itertools import product       ##TODO: Remove this after testing is complete
+skip_grid_search = True # Global flag, set to true when running grid_search
+hyp_idx = -1            # Index into hyperparam list
+hyp_list = []           # List for hyperparameter tuning in grid_search
 
 # Grid Search Options
-replace_unknown = [False, True]
-max_depths = range(3, 8, 1)
-sample_split_size = range(3, 20, 1)
-use_entropy = [False, True]
-drop_cols = [False, True]
+for ru in [False, True]:                      # replace unknown values ?
+    for depth in range(3, 8):                 # max tree depth
+        for split_size in range(3, 20):       # mininum sample split size
+            for entropy in [False, True]:     # use_entropy (False meanis use gini index)
+                for drop in [False, True]:    # drop_cols (drop colums day, duration, and default?
+                    hyp_list.append((ru, depth, split_size, entropy, drop))
 
-#Hyperparameter list with all combination of Grid search options
-hyp_list = list(product(replace_unknown, max_depths, sample_split_size, use_entropy, drop_cols))
-hyp_idx = -1
-
-#hardcoded = False       ##TODO: Delete this flag
-hardcoded = True        ##TODO: Delete this flag
-# Remove - end
 
 '''
 General Instructions:
@@ -66,13 +60,12 @@ class DataLoader:
         self.data_valid = None
 
         ##TODO: Hyperparam and flag
-        if hardcoded == True:
-            #print(f"HARDCODED is {hardcoded} - DataLoader ")
+        if skip_grid_search == True:
             self.replace_unknown = True # False
             self.drop_cols = False
             self.upsample_train_data = True
         else:
-            #self.upsample_train_data = False
+            self.upsample_train_data = False
             self.replace_unknown = hyp_list[hyp_idx][0]
             self.drop_cols = hyp_list[hyp_idx][4]
 
@@ -123,6 +116,7 @@ class DataLoader:
             # Recombine and shuffle
             self.data_train = pd.concat(
                   [neg, pos_upsampled]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
+
 
 
     def plot_histogram(self):
@@ -268,8 +262,7 @@ class ClassificationTree:
         self.categorical_indices = DataLoader.st_categorical_indices
 
         ##TODO: Hyperparam and flag
-        if hardcoded == True:
-            #print(f"HARDCODED is {hardcoded} - Tree")
+        if skip_grid_search == True:
             self.max_depth = 7
             self.min_samples_split = 12
             self.use_entropy = False #True
@@ -539,7 +532,6 @@ def train_XGBoost() -> dict:
     X_train, y_train = loader.extract_features_and_label(loader.data_train)
     X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
 
-    print(f"\nSearching for best alpha for xg_boost")
     for alpha in alpha_vals:
         f1_scores = []
 
@@ -565,7 +557,7 @@ def train_XGBoost() -> dict:
 
         avg_f1 = np.mean(f1_scores)
         results[alpha] = avg_f1
-        print(f"\tAlpha={alpha}: Avg F1 = {avg_f1:.4f}")
+        print(f"\tAlpha = {alpha:8.3f}: Avg F1 = {avg_f1:.4f}")
 
     plt.figure(figsize=(6, 4))
     plt.plot(list(results.keys()), list(results.values()), marker='o')
@@ -579,7 +571,7 @@ def train_XGBoost() -> dict:
     #plt.show()
 
     best_alpha = max(results, key=results.get)
-    print(f"\nBest alpha: {best_alpha} with Avg F1 = {results[best_alpha]:.4f}\n")
+    print(f"\n\tBest alpha: {best_alpha} with Avg F1 = {results[best_alpha]:.4f}\n")
 
     return {
         "alpha_scores": results,
@@ -642,16 +634,43 @@ def compute_f1_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     f1 = 2 * (precision * recall) / (precision + recall)
     return f1
 
-def grid_search():
-    global hyp_idx
-    max_runs = 0
-    if hardcoded == True:
-        max_runs = 1
-    else: #hardcoded == False:
-        max_runs = len(hyp_list)
+def run_train_predict_with_decision_tree():
 
-    #for hyp_idx in range(0,len(hyp_list)):
-    for hyp_idx in range(0, max_runs):
+    loader = DataLoader("./", 42)
+    loader.plot_histogram()
+
+    loader.data_prep()
+    loader.data_split()
+    print("\nFirst 10 rows/samples of the training data")
+    print(loader.data_train.head(11))
+
+    print("\nNow actaully running train and predict with my Decison Tree")
+    X_train, y_train = loader.extract_features_and_label(loader.data_train)
+    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+    decision_tree = ClassificationTree(random_state = 42);
+    decision_tree.build_tree(X_train, y_train)
+    y_pred = decision_tree.predict(X_valid)
+
+    accuracy  = (y_pred == y_valid).mean()
+    prec = precision(y_valid, y_pred)
+    rec =  recall(y_valid, y_pred)
+    f1 = compute_f1_score(y_valid, y_pred)
+
+    #print(f"\tSimple Train and Predict Results: Accuracy Precison Recall F1-Score: ",
+    #      f"\n{accuracy:8.4f}, {prec:8.4f}, {rec:8.4f}, {f1:8.4f}"
+    #      , flush=True)
+    print(f"\tAccuracy  : {accuracy:.4f}")
+    print(f"\tPrecision : {prec:.4f}")
+    print(f"\tRecall    : {rec:.4f}")
+    print(f"\tF1 Score  : {f1:.4f}", flush=True)
+
+
+def run_grid_search():
+
+    global hyp_idx
+
+    for hyp_idx in range(0,len(hyp_list)):
         loader = DataLoader("./", 42)
         loader.plot_histogram()
 
@@ -670,12 +689,16 @@ def grid_search():
         rec =  recall(y_valid, y_pred)
         f1 = compute_f1_score(y_valid, y_pred)
 
-        print(f"HYP: A/P/R/F1: {accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}", flush=True)
+        print(f"\tGridSearch: Acc, Prec, Recall, F1Score: ",
+              f"{accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}",
+              flush=True)
 
 def plot_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, save_path="roc_curve.png"):
     '''
     Compute and plot ROC curve using TPR/FPR at various thresholds.
     '''
+
+    print(f"\nGetting Ready to plot ROC AUC curve")
     # Sort by predicted probabilities descending
     desc_sort = np.argsort(-y_prob)
     y_true = y_true[desc_sort]
@@ -713,14 +736,13 @@ def plot_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, save_path="roc_curve.
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, format="png")
-    print(f"ROC curve saved as: {save_path}")
+
+    print(f"\n\tROC AUC (Area Under the Curver: {auc:.4f}")
 
 
-    print(f"AUC: {auc:.4f}")
-def main():
+def run_xgboost():
 
-    #grid_search()
-
+    print(f"\tSearch for best alpha with XG boost")
     results = train_XGBoost()
     best_alpha = results["best_alpha"]
 
@@ -740,7 +762,7 @@ def main():
         n_jobs = 1
     )
     my_best_model.fit(X_train, y_train)
-    print(f"\nFinal model trained with reg_lambda = {best_alpha}")
+    print(f"\nNow Running the best XG Boost model trained with reg_lambda = {best_alpha}")
 
     # Predict and evaluate
     y_pred = my_best_model.predict(X_valid)
@@ -749,15 +771,30 @@ def main():
     rec = recall(y_valid, y_pred)
     f1 = compute_f1_score(y_valid, y_pred)
 
-    print(f"\nmy_best_model Evaluation:")
-    print(f"\tAccuracy: {accuracy:.4f}")
-    print(f"\tPrecision: {prec:.4f}")
-    print(f"\tRecall: {rec:.4f}")
-    print(f"\tF1 Score: {f1:.4f}")
+    print(f"\n\tmy_best_model Evaluation:")
+    print(f"\t\tAccuracy  : {accuracy:.4f}")
+    print(f"\t\tPrecision : {prec:.4f}")
+    print(f"\t\tRecall    : {rec:.4f}")
+    print(f"\t\tF1 Score  : {f1:.4f}")
 
     # Predict probabilities for positive class
     y_prob = my_best_model.predict_proba(X_valid)[:, 1]
     plot_roc_curve(y_valid, y_prob, "roc_auc.png")
+
+def main():
+    global skip_grid_search
+    skip_grid_search = True
+
+    print("\nFirst running train and predict with my Decison Tree")
+    run_train_predict_with_decision_tree()
+
+    print("\nSecond: Running XG boost")
+    run_xgboost()
+
+    print("\nFinally: Running GridSearch for hyperparamete tuning for -")
+    print("       : Accuracey, Precision, Reacall, F1-Score")
+    skip_grid_search = False
+    run_grid_search()
 
 if __name__ == "__main__":
      main()

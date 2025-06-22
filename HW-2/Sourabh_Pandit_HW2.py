@@ -543,7 +543,7 @@ def train_XGBoost() -> dict:
         f1_scores = []
 
         for i in range(100):
-			# Sample with replacement
+            # Sample with replacement
             boot_idx = np.random.choice(len(X_train), size=len(X_train), replace=True)
             X_bootstrap = X_train[boot_idx]
             y_bootstrap = y_train[boot_idx]
@@ -565,6 +565,17 @@ def train_XGBoost() -> dict:
         avg_f1 = np.mean(f1_scores)
         results[alpha] = avg_f1
         print(f"Alpha={alpha}: Avg F1 = {avg_f1:.4f}")
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(list(results.keys()), list(results.values()), marker='o')
+    plt.xscale('log')
+    plt.xlabel("Alpha (L2 Regularization Strength)")
+    plt.ylabel("Average F1 Score")
+    plt.title("Avg F1 Score vs. Alpha (reg_lambda)")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("xgboost_best_alpha", format='png')
+    #plt.show()
 
     best_alpha = max(results, key=results.get)
     print(f"\n Best alpha: {best_alpha} with Avg F1 = {results[best_alpha]:.4f}")

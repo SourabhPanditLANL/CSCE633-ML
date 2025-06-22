@@ -579,7 +579,14 @@ def train_XGBoost() -> dict:
 Initialize the following variable with the best model you have found. This model will be used in testing
 in our pre-built environment.
 '''
-my_best_model = XGBClassifier()
+my_best_model = XGBClassifier(
+        max_depth = 5,
+        n_estimators=100,
+        eval_metric='logloss',
+        reg_lambda=10,
+        random_state=42,
+        n_jobs = 1
+    )
 
 
 def precision(y_true, y_pred):

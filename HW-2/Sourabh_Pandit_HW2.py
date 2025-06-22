@@ -539,6 +539,7 @@ def train_XGBoost() -> dict:
     X_train, y_train = loader.extract_features_and_label(loader.data_train)
     X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
 
+    print(f"\nSearching for best alpha for xg_boost")
     for alpha in alpha_vals:
         f1_scores = []
 
@@ -564,7 +565,7 @@ def train_XGBoost() -> dict:
 
         avg_f1 = np.mean(f1_scores)
         results[alpha] = avg_f1
-        print(f"Alpha={alpha}: Avg F1 = {avg_f1:.4f}")
+        print(f"\tAlpha={alpha}: Avg F1 = {avg_f1:.4f}")
 
     plt.figure(figsize=(6, 4))
     plt.plot(list(results.keys()), list(results.values()), marker='o')
@@ -574,11 +575,11 @@ def train_XGBoost() -> dict:
     plt.title("Avg F1 Score vs. Alpha (reg_lambda)")
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("xgboost_best_alpha", format='png')
+    plt.savefig("xgboost_best_alpha.png", dpi=300, format='png')
     #plt.show()
 
     best_alpha = max(results, key=results.get)
-    print(f"\n Best alpha: {best_alpha} with Avg F1 = {results[best_alpha]:.4f}")
+    print(f"\nBest alpha: {best_alpha} with Avg F1 = {results[best_alpha]:.4f}\n")
 
     return {
         "alpha_scores": results,
@@ -671,6 +672,51 @@ def grid_search():
 
         print(f"HYP: A/P/R/F1: {accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}", flush=True)
 
+def plot_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, save_path="roc_curve.png"):
+    '''
+    Compute and plot ROC curve using TPR/FPR at various thresholds.
+    '''
+    # Sort by predicted probabilities descending
+    desc_sort = np.argsort(-y_prob)
+    y_true = y_true[desc_sort]
+    y_prob = y_prob[desc_sort]
+
+    # Total positives and negatives
+    P = np.sum(y_true == 1)
+    N = np.sum(y_true == 0)
+
+    tpr_list = []
+    fpr_list = []
+
+    tp = fp = 0
+    for i in range(len(y_true)):
+        if y_true[i] == 1:
+            tp += 1
+        else:
+            fp += 1
+        tpr = tp / P if P > 0 else 0
+        fpr = fp / N if N > 0 else 0
+        tpr_list.append(tpr)
+        fpr_list.append(fpr)
+
+    # Compute AUC using trapezoidal rule
+    auc = np.trapz(tpr_list, fpr_list)
+
+    # Plot ROC
+    plt.figure(figsize=(6, 4))
+    plt.plot(fpr_list, tpr_list, label=f"ROC Curve (AUC = {auc:.4f})", color="blue")
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label="Random Classifier")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve for my_best_model")
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, format="png")
+    print(f"ROC curve saved as: {save_path}")
+
+
+    print(f"AUC: {auc:.4f}")
 def main():
 
     #grid_search()
@@ -694,7 +740,7 @@ def main():
         n_jobs = 1
     )
     my_best_model.fit(X_train, y_train)
-    print(f"\n Final model trained with reg_alpha = {best_alpha}")
+    print(f"\nFinal model trained with reg_lambda = {best_alpha}")
 
     # Predict and evaluate
     y_pred = my_best_model.predict(X_valid)
@@ -703,12 +749,15 @@ def main():
     rec = recall(y_valid, y_pred)
     f1 = compute_f1_score(y_valid, y_pred)
 
-    print(f"\n my_best_model Evaluation:")
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {prec:.4f}")
-    print(f"Recall: {rec:.4f}")
-    print(f"F1 Score: {f1:.4f}")
-    print("Hello World!")
+    print(f"\nmy_best_model Evaluation:")
+    print(f"\tAccuracy: {accuracy:.4f}")
+    print(f"\tPrecision: {prec:.4f}")
+    print(f"\tRecall: {rec:.4f}")
+    print(f"\tF1 Score: {f1:.4f}")
+
+    # Predict probabilities for positive class
+    y_prob = my_best_model.predict_proba(X_valid)[:, 1]
+    plot_roc_curve(y_valid, y_prob, "roc_auc.png")
 
 if __name__ == "__main__":
      main()

@@ -68,7 +68,7 @@ class DataLoader:
         ##TODO: Hyperparam and flag
         if hardcoded == True:
             #print(f"HARDCODED is {hardcoded} - DataLoader ")
-            self.replace_unknown = False
+            self.replace_unknown = True # False
             self.drop_cols = False
             self.upsample_train_data = True
         else:
@@ -270,9 +270,9 @@ class ClassificationTree:
         ##TODO: Hyperparam and flag
         if hardcoded == True:
             #print(f"HARDCODED is {hardcoded} - Tree")
-            self.max_depth = 6
-            self.min_samples_split = 14
-            self.use_entropy = True
+            self.max_depth = 7
+            self.min_samples_split = 12
+            self.use_entropy = False #True
         else:
             self.max_depth = hyp_list[hyp_idx][1]
             self.min_samples_split = hyp_list[hyp_idx][2]
@@ -617,7 +617,6 @@ def compute_f1_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return f1
 
 def grid_search():
-    '''
     global hyp_idx
     max_runs = 0
     if hardcoded == True:
@@ -626,7 +625,7 @@ def grid_search():
         max_runs = len(hyp_list)
 
     #for hyp_idx in range(0,len(hyp_list)):
-    for hyp_idx in range(0,max_runs):
+    for hyp_idx in range(0, max_runs):
         loader = DataLoader("./", 42)
         loader.plot_histogram()
 
@@ -646,11 +645,10 @@ def grid_search():
         f1 = compute_f1_score(y_valid, y_pred)
 
         print(f"HYP: A/P/R/F1: {accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}", flush=True)
-    '''
 
 def main():
 
-    grid_search()
+    #grid_search()
 
     results = train_XGBoost()
     best_alpha = results["best_alpha"]
@@ -668,7 +666,7 @@ def main():
         random_state=42
     )
     my_best_model.fit(X_train, y_train)
-    print(f"\n✅ Final model trained with reg_alpha = {best_alpha}")
+    print(f"\n Final model trained with reg_alpha = {best_alpha}")
 
     # Predict and evaluate
     y_pred = my_best_model.predict(X_valid)
@@ -677,7 +675,7 @@ def main():
     rec = recall(y_valid, y_pred)
     f1 = compute_f1_score(y_valid, y_pred)
 
-    print(f"\n📊 my_best_model Evaluation:")
+    print(f"\n my_best_model Evaluation:")
     print(f"Accuracy: {accuracy:.4f}")
     print(f"Precision: {prec:.4f}")
     print(f"Recall: {rec:.4f}")

@@ -524,7 +524,6 @@ class ClassificationTree:
         return parent_impurity - child_impurity
 
 
-
 def train_XGBoost() -> dict:
     '''
     See instruction for implementation details. This function will be tested on the pre-built enviornment
@@ -533,24 +532,32 @@ def train_XGBoost() -> dict:
     alpha_vals = [1e-3, 1e-2, 1e-1, 1, 1e1, 1e2, 1e3]
     results = {}
 
+    loader = DataLoader("./", random_state=42)
+    loader.data_prep()
+    loader.data_split()
+
+    X_train, y_train = loader.extract_features_and_label(loader.data_train)
+    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
     for alpha in alpha_vals:
         f1_scores = []
 
         for i in range(100):
-            loader = DataLoader("./", random_state=i)  # Change seed per iteration
-            loader.data_prep()
-            loader.data_split()
-
-            X_train, y_train = loader.extract_features_and_label(loader.data_train)
-            X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+			# Sample with replacement
+            boot_idx = np.random.choice(len(X_train), size=len(X_train), replace=True)
+            X_bootstrap = X_train[boot_idx]
+            y_bootstrap = y_train[boot_idx]
 
             model = XGBClassifier(
+                max_depth = 5,
+                n_estimators=100,
                 eval_metric='logloss',
                 reg_lambda=alpha,
-                random_state=42
+                random_state=42,
+                n_jobs = 1
             )
 
-            model.fit(X_train, y_train)
+            model.fit(X_bootstrap, y_bootstrap)
             y_pred = model.predict(X_valid)
             f1 = compute_f1_score(y_valid, y_pred)
             f1_scores.append(f1)
@@ -661,9 +668,12 @@ def main():
     X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
 
     my_best_model = XGBClassifier(
+        max_depth = 5,
+        n_estimators=100,
         eval_metric='logloss',
         reg_lambda=best_alpha,
-        random_state=42
+        random_state=42,
+        n_jobs = 1
     )
     my_best_model.fit(X_train, y_train)
     print(f"\n Final model trained with reg_alpha = {best_alpha}")

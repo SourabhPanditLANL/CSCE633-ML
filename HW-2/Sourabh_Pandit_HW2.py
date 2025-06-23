@@ -350,7 +350,7 @@ class ClassificationTree:
                          right=right_child,
                          prediction=None)
 
-
+    ## Do not use exhaustive left_set
     def search_best_split(self, X: np.ndarray, y: np.ndarray):
         '''
         Search for the best feature and split value.
@@ -370,11 +370,12 @@ class ClassificationTree:
 
             is_categorical = feature_index in self.categorical_indices
             #print(f"DEBUG: CAT INDICES = {self.categorical_indices}", flush=True)
-            '''
+
             if is_categorical:
                 for val in unique_values:
                     left_set = {val}
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set, is_categorical=True)
+                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set,
+                                                                  is_categorical=True)
                     if X_left is None or X_right is None:
                         continue
 
@@ -383,7 +384,47 @@ class ClassificationTree:
                     if gain > best_gain:
                         best_gain = gain
                         best_split = (feature_index, left_set, True)
-            '''
+
+            else:
+                #print("\nDEBUG NUMERICAL")
+                sorted_vals = np.sort(unique_values)
+                for i in range(1, len(sorted_vals)):
+                    threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
+                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, threshold,
+                                                                  is_categorical=False)
+                    if X_left is None or X_right is None:
+                        continue
+
+                    gain = self.information_gain(y, y_left, y_right)
+
+                    if gain > best_gain:
+                        best_gain = gain
+                        best_split = (feature_index, threshold, False)
+
+        return best_split
+
+    """
+    ## Use exhaustive left_set
+    def search_best_split(self, X: np.ndarray, y: np.ndarray):
+        '''
+        Search for the best feature and split value.
+
+        Returns:
+            (feature_index, split_value, is_categorical) if a split is found,
+            else None
+        '''
+
+        best_gain = -1
+        best_split = None
+        n_samples, n_features = X.shape
+
+        for feature_index in range(n_features):
+            feature_values = X[:, feature_index]
+            unique_values = np.unique(feature_values)
+
+            is_categorical = feature_index in self.categorical_indices
+            #print(f"DEBUG: CAT INDICES = {self.categorical_indices}", flush=True)
+
             if is_categorical:
                 #print("\nDEBUG CATEGORICAL", flush=True)
                 num_vals = len(unique_values)
@@ -396,7 +437,8 @@ class ClassificationTree:
                             left_set.add(unique_values[i])
 
                     #print(f"DEBUG: LEN_LEFT_SET: {len(left_set)}", flush=True)
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set, is_categorical=True)
+                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set,
+                                                                  is_categorical=True)
 
                     if X_left is None or X_right is None:
                         continue
@@ -412,7 +454,8 @@ class ClassificationTree:
                 sorted_vals = np.sort(unique_values)
                 for i in range(1, len(sorted_vals)):
                     threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, threshold, is_categorical=False)
+                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, threshold,
+                                                                  is_categorical=False)
                     if X_left is None or X_right is None:
                         continue
 
@@ -423,7 +466,7 @@ class ClassificationTree:
                         best_split = (feature_index, threshold, False)
 
         return best_split
-
+    """
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         '''

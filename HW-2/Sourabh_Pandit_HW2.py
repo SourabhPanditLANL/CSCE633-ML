@@ -62,7 +62,7 @@ class DataLoader:
 
         ##TODO: Hyperparam and flag
         if skip_grid_search == True:
-            self.replace_unknown = True # False
+            self.replace_unknown = False
             self.drop_cols = False
             self.upsample_train_data = False #True
         else:
@@ -70,10 +70,10 @@ class DataLoader:
             self.drop_cols = hyp_list[hyp_idx][1]
             self.upsample_train_data = hyp_list[hyp_idx][2]
 
-        '''
-        print(f"HYPLIST DataLoader {self.replace_unknown}, {self.drop_cols}, {self.upsample_train_data}",
-             flush=True)
-        '''
+        #TODO: Revisit this ...
+        self.prep_done = False
+        self.data_prep()
+
 
     def data_split(self) -> None:
         '''
@@ -81,39 +81,55 @@ class DataLoader:
         Add the split datasets to self.data_train, self.data_valid. Both of the split should still be pd.DataFrame.
         '''
 
-        ## Train and Validation Split using Strata: Separate class 0 and class 1
-        class_0 = self.data[self.data['y'] == 0]
-        class_1 = self.data[self.data['y'] == 1]
+        if self.data_train is not None and self.data_valid is not None:
+            return
+
+        y_unique_values = set(self.data['y'].unique())
+
+        if y_unique_values == {'yes', 'no'}:
+            pos_val = 'yes'
+            neg_val = 'no'
+        elif y_unique_values == {0, 1}:
+            pos_val = 1
+            neg_val = 0
+        else:
+            #print(f"Unexpected values: {y_unique_values}", flush=True)
+            exit(0)
+
+
+        ## Train and Validation Split using Strata: Separate class neg_val and class pos_val
+        class_neg = self.data[self.data['y'] == neg_val]
+        class_pos = self.data[self.data['y'] == pos_val]
 
         ## Shuffle each class, all samples
-        class_0 = class_0.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
-        class_1 = class_1.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
+        class_neg = class_neg.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
+        class_pos = class_pos.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
         ## Indices to split each class in 80/20
-        split_0_idx = int(0.8 * len(class_0))
-        split_1_idx = int(0.8 * len(class_1))
+        split_idx_neg = int(0.8 * len(class_neg))
+        split_idx_pos = int(0.8 * len(class_pos))
 
-        ## Training and Validation data from class 0
-        train_0 = class_0.iloc[:split_0_idx]
-        valid_0 = class_0.iloc[split_0_idx:]
+        ## Training and Validation data from class neg_val
+        train_neg = class_neg.iloc[:split_idx_neg]
+        valid_neg = class_neg.iloc[split_idx_neg:]
 
-        ## Training and Validation data from class 1
-        train_1 = class_1.iloc[:split_1_idx]
-        valid_1 = class_1.iloc[split_1_idx:]
+        ## Training and Validation data from class pos_val
+        train_pos = class_pos.iloc[:split_idx_pos]
+        valid_pos = class_pos.iloc[split_idx_pos:]
 
         # Combine the training data from two classes and shuffle again
         self.data_train = pd.concat(
-                [train_0, train_1]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
+                [train_neg, train_pos]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
         # Combine the validation data from two classes and shuffle again
         self.data_valid = pd.concat(
-                [valid_0, valid_1]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
+                [valid_neg, valid_pos]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
         #TODO: Upsampling/Oversampling minority class
         ## We have imbalanced data and need to upsample the 'yes' y-values
         if self.upsample_train_data == True:
-            pos = self.data_train[self.data_train['y'] == 1]
-            neg = self.data_train[self.data_train['y'] == 0]
+            pos = self.data_train[self.data_train['y'] == pos_val]
+            neg = self.data_train[self.data_train['y'] == neg_val]
 
             # Oversample positives to match negatives
             pos_upsampled = pos.sample(n=int(len(neg)), replace=True, random_state=self.random_state)
@@ -122,6 +138,110 @@ class DataLoader:
             self.data_train = pd.concat(
                   [neg, pos_upsampled]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
+
+    def data_prep(self) -> None:
+        '''
+        You are asked to drop any rows with missing values and map categorical variables to numeric values.
+        '''
+
+        df = self.data.copy()                   # Work on a safe copy
+        df.columns = df.columns.str.strip()     # Clean column names
+
+        #TODO; check if duration and default should be dropped or kept
+        for col in ['day', 'duration', 'default']:
+            if self.drop_cols  and col in df.columns:
+                df.drop(columns=[col], inplace=True)
+
+        if self.replace_unknown:
+            for col in df.select_dtypes(include=['object']).columns:
+                unknown_count = (df[col] == 'unknown').sum()
+                unknown_ratio = unknown_count / len(df)
+                if unknown_count > 0 and unknown_ratio < 0.05:
+                    mode = df[df[col] != 'unknown'][col].mode()
+                    if not mode.empty:
+                        df.loc[:, col] = df[col].replace('unknown', mode[0])
+
+        df.dropna(inplace=True)                 # Drop any remaining NaNs
+        df.reset_index(drop=True, inplace=True)
+
+        DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
+        DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
+
+        # Map categorical data to numerical values
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col], _ = pd.factorize(df[col])
+
+        self.data = df
+
+
+    """
+    def data_prep(self) -> None:
+        '''
+        You are asked to drop any rows with missing values and map categorical variables to numeric values.
+        '''
+
+        if self.prep_done == True:
+            return
+
+        def _data_prep(df, set_cat_col_indices:bool=False):
+            df = df.copy()
+            df.columns = df.columns.str.strip()
+
+            # Drop specified columns if in drop list
+            for col in ['day', 'duration', 'default']:
+                if self.drop_cols and col in df.columns:
+                    df.drop(columns=[col], inplace=True)
+
+            # Replace 'unknown' with mode if rare
+            if self.replace_unknown:
+                for col in df.select_dtypes(include=['object']).columns:
+                    unknown_count = (df[col] == 'unknown').sum()
+                    unknown_ratio = unknown_count / len(df)
+                    if unknown_count > 0 and unknown_ratio < 0.05:
+                        mode = df[df[col] != 'unknown'][col].mode()
+                        if not mode.empty:
+                            df.loc[:, col] = df[col].replace('unknown', mode[0])
+
+            df.dropna(inplace=True)
+            df.reset_index(drop=True, inplace=True)
+
+            # Save categorical column info
+            if set_cat_col_indices:
+                DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
+                DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
+
+            # Convert categorical columns to numeric
+            for col in DataLoader.st_categorical_cols:
+                df[col], _ = pd.factorize(df[col])
+
+            return df
+
+
+        #if self.data_train is None  or self.data_valid is None:
+        #    self.data_split()
+
+        # Apply cleaning to all datasets
+        self.data = _data_prep(self.data, set_cat_col_indices=True)
+        self.data_train = _data_prep(self.data_train)
+        self.data_valid = _data_prep(self.data_valid)
+
+        self.prep_done = True
+    """
+
+
+    def extract_features_and_label(self, data: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        '''
+        This function will be called multiple times to extract features and labels from train/valid/test
+        data.
+
+        Expected return:
+            X_data: np.ndarray of shape (n_samples, n_features) - Extracted features
+            y_data: np.ndarray of shape (n_samples,) - Extracted labels
+        '''
+
+        X = data.drop(columns=['y']).values
+        y = data['y'].values
+        return(X, y)
 
 
     def plot_histogram(self):
@@ -160,62 +280,6 @@ class DataLoader:
         plt.savefig("histogram.png", dpi=300, format="png")
         #plt.show()
 
-    def data_prep(self) -> None:
-        '''
-        You are asked to drop any rows with missing values and map categorical variables to numeric values.
-        '''
-
-        df = self.data.copy()                   # Work on a safe copy
-        df.columns = df.columns.str.strip()     # Clean column names
-
-        #TODO; check if duration and default should be dropped or kept
-        for col in ['day', 'duration', 'default']:
-            if self.drop_cols  and col in df.columns:
-                df.drop(columns=[col], inplace=True)
-
-        if self.replace_unknown:
-            for col in df.select_dtypes(include=['object']).columns:
-                unknown_count = (df[col] == 'unknown').sum()
-                unknown_ratio = unknown_count / len(df)
-                if unknown_count > 0 and unknown_ratio < 0.05:
-                    mode = df[df[col] != 'unknown'][col].mode()
-                    if not mode.empty:
-                        df.loc[:, col] = df[col].replace('unknown', mode[0])
-
-        df.dropna(inplace=True)                 # Drop any remaining NaNs
-        df.reset_index(drop=True, inplace=True)
-
-        DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
-        DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
-
-        # Map categorical data to numerical values
-        for col in df.select_dtypes(include=['object']).columns:
-            df[col], _ = pd.factorize(df[col])
-
-
-        #TODO: enable/disable this
-        #One Hot Encoding
-        #df['y'] = df['y'].map({'yes': 1, 'no': 0})
-        '''
-        X = df.drop('y', axis=1)
-        y = df['y']
-        X_encoded = pd.get_dummies(X, drop_first=True)
-        df = pd.concat([X_encoded, y], axis=1)
-        '''
-        self.data = df
-
-
-    def extract_features_and_label(self, data: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-        '''
-        This function will be called multiple times to extract features and labels from train/valid/test
-        data.
-
-        Expected return:
-            X_data: np.ndarray of shape (n_samples, n_features) - Extracted features
-            y_data: np.ndarray of shape (n_samples,) - Extracted labels
-        '''
-
-        return (data.drop(columns=['y']).values, data['y'].values)
 
 '''
 Porblem A-2: Classification Tree Inplementation
@@ -264,17 +328,12 @@ class ClassificationTree:
         ##TODO: Hyperparam and flag
         if skip_grid_search == True:
             self.max_depth = 7
-            self.min_samples_split = 12
+            self.min_samples_split = 3
             self.use_entropy = False #True
         else:
             self.max_depth = hyp_list[hyp_idx][3]
             self.min_samples_split = hyp_list[hyp_idx][4]
             self.use_entropy = hyp_list[hyp_idx][5]
-
-        '''
-        print(f"\tHYPLIST DecisionTree {self.max_depth}, {self.min_samples_split}, {self.use_entropy}",
-              flush=True)
-        '''
 
     def split_crit(self, y: np.ndarray) -> float:
         '''
@@ -298,16 +357,60 @@ class ClassificationTree:
         '''
         Public method to initiate tree construction. Stores the root node.
         '''
+
+        def _build_tree_recursive(X: np.ndarray, y: np.ndarray, depth: int):
+            # At a pure node (all labels are the same), return a leaf node
+            if np.unique(y).size == 1:
+                return self.Node(prediction=y[0])
+
+            # Stop condition: not enough samples or max depth reached
+            if len(y) < self.min_samples_split or depth >= self.max_depth:
+                majority_class = np.bincount(y.astype(int)).argmax()
+                return self.Node(prediction=majority_class)
+
+            # Find the best split
+            split_result = self.search_best_split(X, y)
+
+            # If no valid split, return a leaf with majority class
+            if split_result is None:
+                majority_class = np.bincount(y.astype(int)).argmax()
+                return self.Node(prediction=majority_class)
+
+            feature_index, split_value, is_categorical = split_result
+            X_left, y_left, X_right, y_right = self.split(X, y, feature_index, split_value, is_categorical)
+
+            # If split failed to divide the data, return leaf
+            if X_left is None or X_right is None:
+                majority_class = np.bincount(y.astype(int)).argmax()
+                return self.Node(prediction=majority_class)
+
+            # Recursively build the left and right subtrees
+            left_child = _build_tree_recursive(X_left, y_left, depth + 1)
+            right_child = _build_tree_recursive(X_right, y_right, depth + 1)
+
+            # Return the internal node
+            return self.Node(
+                split=(feature_index, split_value, is_categorical),
+                left=left_child,
+                right=right_child,
+                prediction=None
+            )
+
+        # Start tree construction
+        self.tree_root = _build_tree_recursive(X, y, depth=0)
+        return self.tree_root
+
+
+    """
+    def build_tree(self, X: np.ndarray, y: np.ndarray) -> None:
+        '''
+        Public method to initiate tree construction. Stores the root node.
+        '''
         self.tree_root = self._build_tree_recursive(X, y, depth=0)
+        return self.tree_root
 
 
     def _build_tree_recursive(self, X: np.ndarray, y: np.ndarray, depth: int):
-        '''
-        Recursively builds the decision tree.
-
-        Returns:
-            Node - The constructed node (either split node or leaf node)
-        '''
 
         # At a pure node, (all labels are the same), No need to split further,
         # it is a leaf node and we can return prediction
@@ -349,8 +452,73 @@ class ClassificationTree:
                          left=left_child,
                          right=right_child,
                          prediction=None)
+    """
 
-    ## Do not use exhaustive left_set
+    def search_best_split(self, X: np.ndarray, y: np.ndarray):
+        '''
+        Search for the best feature and split value.
+
+        Returns:
+        (feature_index, split_value, is_categorical) if a split is found,
+        else None
+        '''
+        best_gain = -1
+        best_split = None
+        n_samples, n_features = X.shape
+
+        for feature_index in range(n_features):
+            feature_values = X[:, feature_index]
+            unique_values = np.unique(feature_values)
+            is_categorical = feature_index in self.categorical_indices
+
+            if is_categorical:
+                # ---------- SIMPLE CATEGORICAL SPLITTING ----------
+                for val in unique_values:
+                    left_set = {val}
+                    X_left, y_left, X_right, y_right = self.split(
+                        X, y, feature_index, left_set, is_categorical=True
+                    )
+                    if X_left is None or X_right is None:
+                        continue
+                    gain = self.information_gain(y, y_left, y_right)
+                    if gain > best_gain:
+                        best_gain = gain
+                        best_split = (feature_index, left_set, True)
+
+                '''
+                # ---------- EXHAUSTIVE CATEGORICAL SPLITTING ----------
+                num_vals = len(unique_values)
+                for mask in range(1, 2 ** num_vals - 1):
+                    left_set = {unique_values[i] for i in range(num_vals) if (mask >> i) & 1}
+                    X_left, y_left, X_right, y_right = self.split(
+                        X, y, feature_index, left_set, is_categorical=True
+                    )
+                    if X_left is None or X_right is None:
+                        continue
+                    gain = self.information_gain(y, y_left, y_right)
+                    if gain > best_gain:
+                        best_gain = gain
+                        best_split = (feature_index, left_set, True)
+                '''
+            else:
+                sorted_vals = np.sort(unique_values)
+                for i in range(1, len(sorted_vals)):
+                    threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
+                    X_left, y_left, X_right, y_right = self.split(
+                        X, y, feature_index, threshold, is_categorical=False
+                    )
+                    if X_left is None or X_right is None:
+                        continue
+                    gain = self.information_gain(y, y_left, y_right)
+                    if gain > best_gain:
+                        best_gain = gain
+                        best_split = (feature_index, threshold, False)
+
+        return best_split
+
+
+    """
+    ## Do not use exhaustive left_set, it hurt performance
     def search_best_split(self, X: np.ndarray, y: np.ndarray):
         '''
         Search for the best feature and split value.
@@ -359,7 +527,6 @@ class ClassificationTree:
             (feature_index, split_value, is_categorical) if a split is found,
             else None
         '''
-
         best_gain = -1
         best_split = None
         n_samples, n_features = X.shape
@@ -369,7 +536,6 @@ class ClassificationTree:
             unique_values = np.unique(feature_values)
 
             is_categorical = feature_index in self.categorical_indices
-            #print(f"DEBUG: CAT INDICES = {self.categorical_indices}", flush=True)
 
             if is_categorical:
                 for val in unique_values:
@@ -380,13 +546,11 @@ class ClassificationTree:
                         continue
 
                     gain = self.information_gain(y, y_left, y_right)
-
                     if gain > best_gain:
                         best_gain = gain
                         best_split = (feature_index, left_set, True)
 
             else:
-                #print("\nDEBUG NUMERICAL")
                 sorted_vals = np.sort(unique_values)
                 for i in range(1, len(sorted_vals)):
                     threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
@@ -396,23 +560,18 @@ class ClassificationTree:
                         continue
 
                     gain = self.information_gain(y, y_left, y_right)
-
                     if gain > best_gain:
                         best_gain = gain
                         best_split = (feature_index, threshold, False)
 
         return best_split
+    """
 
     """
+    This one usee exhausive teft set but Commented out because actually hurts performacen
+
     ## Use exhaustive left_set
     def search_best_split(self, X: np.ndarray, y: np.ndarray):
-        '''
-        Search for the best feature and split value.
-
-        Returns:
-            (feature_index, split_value, is_categorical) if a split is found,
-            else None
-        '''
 
         best_gain = -1
         best_split = None
@@ -444,7 +603,6 @@ class ClassificationTree:
                         continue
 
                     gain = self.information_gain(y, y_left, y_right)
-
                     if gain > best_gain:
                         best_gain = gain
                         best_split = (feature_index, left_set, True)
@@ -460,7 +618,6 @@ class ClassificationTree:
                         continue
 
                     gain = self.information_gain(y, y_left, y_right)
-
                     if gain > best_gain:
                         best_gain = gain
                         best_split = (feature_index, threshold, False)
@@ -468,7 +625,7 @@ class ClassificationTree:
         return best_split
     """
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
+    def predict(self, X: np.ndarray, dbg_print: bool = True) -> np.ndarray:
         '''
         Predict classes for multiple samples.
 
@@ -478,19 +635,46 @@ class ClassificationTree:
         Returns:
             np.ndarray: Array of predictions
         '''
-        return np.array([self._predict_one(x, self.tree_root) for x in X])
+        if dbg_print:
+            print(f"DEBUG: Enter predict()", flush=True)
 
-    def _predict_one(self, x: np.ndarray, node) -> int:
+        def _predict_one(x: np.ndarray, node) -> int:
+            #Recursively predict the class for a single sample.
+            if node.is_leaf():
+                return node.prediction
+
+            if node.is_categorical:
+                if x[node.feature_idx] in node.split_value:
+                    return _predict_one(x, node.left)
+                else:
+                    return _predict_one(x, node.right)
+            else:
+                if x[node.feature_idx] <= node.split_value:
+                    return _predict_one(x, node.left)
+                else:
+                    return _predict_one(x, node.right)
+
+        ret = np.array([_predict_one(x, self.tree_root) for x in X])
+        return ret
+
+
+    """
+    def predict(self, X: np.ndarray, dbg_print:bool=True) -> np.ndarray:
         '''
-        Recursively predict the class for a single sample.
+        Predict classes for multiple samples.
 
         Args:
-            x (np.ndarray): Single input sample
-            node (Node): Current node in the tree
+            X: numpy array with the same columns as the training data
 
         Returns:
-            int: Predicted class
+            np.ndarray: Array of predictions
         '''
+        if dbg_print:
+            print(f"DEBUG: Enter predict()", flush=True)
+        ret = np.array([self._predict_one(x, self.tree_root) for x in X])
+        return ret
+
+    def _predict_one(self, x: np.ndarray, node) -> int:
         if node.is_leaf():
             return node.prediction
 
@@ -504,6 +688,7 @@ class ClassificationTree:
                 return self._predict_one(x, node.left)
             else:
                 return self._predict_one(x, node.right)
+    """
 
 
     def entropy(self, y):
@@ -587,6 +772,29 @@ class ClassificationTree:
 
         return parent_impurity - child_impurity
 
+    def print_tree(self, node=None, depth=0):
+        """
+        Recursively print the structure of the decision tree.
+        Args:
+            node: Node to print (defaults to tree root)
+            depth: Current depth in the tree (used for indentation)
+        """
+        if node is None:
+            node = self.tree_root
+
+        indent = "  " * depth
+        if node.is_leaf():
+            print(f"{indent}Leaf: Predict {node.prediction}")
+        else:
+            feature = node.feature_idx
+            if node.is_categorical:
+                print(f"{indent}Feature[{feature}] in {node.split_value}?")
+            else:
+                print(f"{indent}Feature[{feature}] <= {node.split_value}?")
+            self.print_tree(node.left, depth + 1)
+            self.print_tree(node.right, depth + 1)
+
+
     @staticmethod
     def precision(y_true, y_pred):
         tp = np.sum((y_true == 1) & (y_pred == 1))
@@ -646,15 +854,15 @@ class ClassificationTree:
             loader = DataLoader("./bank.csv", 42)
             loader.plot_histogram()
 
-            loader.data_prep()
             loader.data_split()
+            loader.data_prep()
 
             X_train, y_train = loader.extract_features_and_label(loader.data_train)
             X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
 
             decision_tree = ClassificationTree(random_state = 42);
             decision_tree.build_tree(X_train, y_train)
-            y_pred = decision_tree.predict(X_valid)
+            y_pred = decision_tree.predict(X_valid, dbg_print=False)
 
             accuracy  = (y_pred == y_valid).mean()
             prec = ClassificationTree.precision(y_valid, y_pred)
@@ -712,17 +920,21 @@ class ClassificationTree:
         print(f"\n\tROC AUC (Area Under the Curver: {auc:.4f}")
 
 
-def train_XGBoost() -> dict:
+def train_XGBoost(dbg_print:bool=True) -> dict:
     '''
     See instruction for implementation details. This function will be tested on the pre-built enviornment
     with numpy, pandas, xgboost available.
     '''
+
+    if dbg_print:
+        print(f"DEBUG: train_XGBoost(): Enter")
+
     alpha_vals = [1e-3, 1e-2, 1e-1, 1, 1e1, 1e2, 1e3]
     results = {}
 
     loader = DataLoader("./bank.csv", random_state=42)
-    loader.data_prep()
     loader.data_split()
+    loader.data_prep()
 
     X_train, y_train = loader.extract_features_and_label(loader.data_train)
     X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
@@ -737,7 +949,7 @@ def train_XGBoost() -> dict:
             y_bootstrap = y_train[boot_idx]
 
             model = XGBClassifier(
-                max_depth = 5,
+                max_depth = 8,
                 n_estimators=100,
                 eval_metric='logloss',
                 reg_lambda=alpha,
@@ -779,11 +991,132 @@ Initialize the following variable with the best model you have found. This model
 in our pre-built environment.
 '''
 my_best_model = XGBClassifier(
-        max_depth = 5,
         n_estimators=100,
         eval_metric='logloss',
         reg_lambda=0.01,
         random_state=42,
-        n_jobs = 1
-    )
+        n_jobs = 1)
 
+def test_decision_tree():
+
+    loader = DataLoader("./bank.csv", 42)
+    loader.data_split()
+    loader.data_prep()
+    print("\nFirst 10 rows/samples of the training data")
+    print(loader.data_train.head(11))
+
+    print("\nNow actually running train and predict with my Decison Tree")
+
+    X_train, y_train = loader.extract_features_and_label(loader.data_train)
+    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+    decision_tree = ClassificationTree(random_state = 42);
+    decision_tree.build_tree(X_train, y_train)
+
+    y_pred = decision_tree.predict(X_valid, dbg_print=False)
+    accuracy  = (y_pred == y_valid).mean()
+    prec = ClassificationTree.precision(y_valid, y_pred)
+    rec =  ClassificationTree.recall(y_valid, y_pred)
+    f1 = ClassificationTree.compute_f1_score(y_valid, y_pred)
+
+    print(f"\tAccuracy  : {accuracy:.4f}")
+    print(f"\tPrecision : {prec:.4f}")
+    print(f"\tRecall    : {rec:.4f}")
+    print(f"\tF1 Score  : {f1:.4f}", flush=True)
+
+def run_grid_search():
+    ClassificationTree.grid_search()
+
+def test_train_xgboost():
+
+    print(f"\n\tSearch for best alpha with XG boost")
+    results = train_XGBoost(dbg_print=False)
+    best_alpha = results["best_alpha"]
+
+    loader = DataLoader("./bank.csv", random_state=42)
+    loader.data_split()
+    loader.data_prep()
+
+    X_train, y_train = loader.extract_features_and_label(loader.data_train)
+    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+    # Initialize XGBClassifier with the best_alpha returned from train_XGBoost()
+    print(f"\nNow Running the best XG Boost model with alpha = {best_alpha}")
+    my_best_model = XGBClassifier(
+       n_estimators=100,
+       eval_metric='logloss',
+       reg_lambda=best_alpha,
+       random_state=42,
+       n_jobs = 1)
+
+
+    my_best_model.fit(X_train, y_train)
+
+    # Predict
+    y_pred = my_best_model.predict(X_valid)
+
+    # Evaluate
+    accuracy = (y_pred == y_valid).mean()
+    prec = ClassificationTree.precision(y_valid, y_pred)
+    rec = ClassificationTree.recall(y_valid, y_pred)
+    f1 = ClassificationTree.compute_f1_score(y_valid, y_pred)
+
+    print(f"\n\tmy_best_model Evaluation:")
+    print(f"\t\tAccuracy  : {accuracy:.4f}")
+    print(f"\t\tPrecision : {prec:.4f}")
+    print(f"\t\tRecall    : {rec:.4f}")
+    print(f"\t\tF1 Score  : {f1:.4f}")
+
+    # Predict probabilities for positive class
+    y_prob = my_best_model.predict_proba(X_valid)[:, 1]
+    ClassificationTree.plot_roc_curve(y_valid, y_prob, "roc_auc.png")
+
+def test_my_best_model():
+
+    print(f"\n\tTest my_best_model")
+
+    loader = DataLoader("./bank.csv", random_state=42)
+    loader.data_split()
+    loader.data_prep()
+
+    X_train, y_train = loader.extract_features_and_label(loader.data_train)
+    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+    global my_best_model
+    my_best_model.fit(X_train, y_train)
+
+    # Predict
+    y_pred = my_best_model.predict(X_valid)
+
+    # Evaluate
+    accuracy = (y_pred == y_valid).mean()
+    prec = ClassificationTree.precision(y_valid, y_pred)
+    rec = ClassificationTree.recall(y_valid, y_pred)
+    f1 = ClassificationTree.compute_f1_score(y_valid, y_pred)
+
+    print(f"\n\tmy_best_model Evaluation:")
+    print(f"\t\tAccuracy  : {accuracy:.4f}")
+    print(f"\t\tPrecision : {prec:.4f}")
+    print(f"\t\tRecall    : {rec:.4f}")
+    print(f"\t\tF1 Score  : {f1:.4f}")
+
+    # Predict probabilities for positive class
+    y_prob = my_best_model.predict_proba(X_valid)[:, 1]
+    ClassificationTree.plot_roc_curve(y_valid, y_prob, "roc_auc.png")
+
+def main():
+    print("\nFirst running train and predict with my Decison Tree")
+    test_decision_tree()
+
+    print("\nSecond: Test XG boost")
+    test_train_xgboost()
+
+    print("\nThird Second: Test global my_best_model")
+    test_my_best_model()
+
+    print("\nFinally: GridSearch for hyperparame tuning for -Accuracy, Precision, Recall, F1-Score")
+    run_grid_search()
+
+
+if __name__ == "__main__":
+     main()

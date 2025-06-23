@@ -55,7 +55,7 @@ class DataLoader:
         self.random_state = random_state
         np.random.seed(self.random_state)
 
-        self.data = pd.read_csv(f"{data_root}/bank.csv", delimiter=';')
+        self.data = pd.read_csv(data_root, delimiter=';')
         self.data_train = None
         self.data_valid = None
 
@@ -63,7 +63,7 @@ class DataLoader:
         if skip_grid_search == True:
             self.replace_unknown = True # False
             self.drop_cols = False
-            self.upsample_train_data = True
+            self.upsample_train_data = False #True
         else:
             self.upsample_train_data = False
             self.replace_unknown = hyp_list[hyp_idx][0]
@@ -180,10 +180,8 @@ class DataLoader:
         df.dropna(inplace=True)                 # Drop any remaining NaNs
         df.reset_index(drop=True, inplace=True)
 
-        # Replace -1 in 'pdays' with 0 (or keep if model can learn from it)
-        #TODO: is the even needed?
-        #if 'pdays' in df.columns:
-        #    df['pdays'] = df['pdays'].replace(-1, 0)
+        DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
+        DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
 
         # Map categorical data to numerical values
         for col in df.select_dtypes(include=['object']).columns:
@@ -199,9 +197,6 @@ class DataLoader:
         X_encoded = pd.get_dummies(X, drop_first=True)
         df = pd.concat([X_encoded, y], axis=1)
         '''
-
-        DataLoader.st_categorical_cols = df.select_dtypes(include=['object']).columns
-        DataLoader.st_categorical_indices = [df.columns.get_loc(col) for col in DataLoader.st_categorical_cols]
         self.data = df
 
 
@@ -358,7 +353,6 @@ class ClassificationTree:
 
         best_gain = -1
         best_split = None
-
         n_samples, n_features = X.shape
 
         for feature_index in range(n_features):
@@ -366,7 +360,8 @@ class ClassificationTree:
             unique_values = np.unique(feature_values)
 
             is_categorical = feature_index in self.categorical_indices
-
+            #print(f"DEBUG: CAT INDICES = {self.categorical_indices}", flush=True)
+            '''
             if is_categorical:
                 for val in unique_values:
                     left_set = {val}
@@ -379,8 +374,32 @@ class ClassificationTree:
                     if gain > best_gain:
                         best_gain = gain
                         best_split = (feature_index, left_set, True)
+            '''
+            if is_categorical:
+                #print("\nDEBUG CATEGORICAL", flush=True)
+                num_vals = len(unique_values)
+
+                # Loop over all non-empty proper subsets (exclude full set)
+                for mask in range(1, 2 ** num_vals - 1):
+                    left_set = set()
+                    for i in range(num_vals):
+                        if (mask >> i) & 1:
+                            left_set.add(unique_values[i])
+
+                    #print(f"DEBUG: LEN_LEFT_SET: {len(left_set)}", flush=True)
+                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set, is_categorical=True)
+
+                    if X_left is None or X_right is None:
+                        continue
+
+                    gain = self.information_gain(y, y_left, y_right)
+
+                    if gain > best_gain:
+                        best_gain = gain
+                        best_split = (feature_index, left_set, True)
 
             else:
+                #print("\nDEBUG NUMERICAL")
                 sorted_vals = np.sort(unique_values)
                 for i in range(1, len(sorted_vals)):
                     threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
@@ -516,6 +535,125 @@ class ClassificationTree:
 
         return parent_impurity - child_impurity
 
+    @staticmethod
+    def precision(y_true, y_pred):
+        tp = np.sum((y_true == 1) & (y_pred == 1))
+        fp = np.sum((y_true == 0) & (y_pred == 1))
+        return tp / (tp + fp) if (tp + fp) > 0 else 0.0
+
+    @staticmethod
+    def recall(y_true, y_pred):
+        tp = np.sum((y_true == 1) & (y_pred == 1))
+        fn = np.sum((y_true == 1) & (y_pred == 0))
+        return tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+
+    @staticmethod
+    def compute_f1_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        '''
+        Compute the F1-score for binary classification (0/1 labels).
+
+        Args:
+            y_true: Ground truth labels
+            y_pred: Predicted labels
+
+        Returns:
+            F1-score as a float
+        '''
+        y_true = y_true.astype(int)
+        y_pred = y_pred.astype(int)
+
+        tp = np.sum((y_true == 1) & (y_pred == 1))
+        fp = np.sum((y_true == 0) & (y_pred == 1))
+        fn = np.sum((y_true == 1) & (y_pred == 0))
+
+        if tp + fp == 0 or tp + fn == 0:
+            return 0.0
+
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+
+        if precision + recall == 0:
+            return 0.0
+
+        f1 = 2 * (precision * recall) / (precision + recall)
+        return f1
+
+    @staticmethod
+    def grid_search():
+
+        global hyp_idx
+
+        for hyp_idx in range(0,len(hyp_list)):
+            loader = DataLoader("./bank.csv", 42)
+            loader.plot_histogram()
+
+            loader.data_prep()
+            loader.data_split()
+
+            X_train, y_train = loader.extract_features_and_label(loader.data_train)
+            X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
+
+            decision_tree = ClassificationTree(random_state = 42);
+            decision_tree.build_tree(X_train, y_train)
+            y_pred = decision_tree.predict(X_valid)
+
+            accuracy  = (y_pred == y_valid).mean()
+            prec = ClassificationTree.precision(y_valid, y_pred)
+            rec =  ClassificationTree.recall(y_valid, y_pred)
+            f1 = ClassificationTree.compute_f1_score(y_valid, y_pred)
+
+            print(f"\tGridSearch: Acc, Prec, Recall, F1Score: ",
+                  f"{accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}",
+                  flush=True)
+
+    @staticmethod
+    def plot_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, save_path="roc_curve.png"):
+        '''
+        Compute and plot ROC curve using TPR/FPR at various thresholds.
+        '''
+
+        print(f"\nGetting Ready to plot ROC AUC curve")
+        # Sort by predicted probabilities descending
+        desc_sort = np.argsort(-y_prob)
+        y_true = y_true[desc_sort]
+        y_prob = y_prob[desc_sort]
+
+        # Total positives and negatives
+        P = np.sum(y_true == 1)
+        N = np.sum(y_true == 0)
+
+        tpr_list = []
+        fpr_list = []
+
+        tp = fp = 0
+        for i in range(len(y_true)):
+            if y_true[i] == 1:
+                tp += 1
+            else:
+                fp += 1
+            tpr = tp / P if P > 0 else 0
+            fpr = fp / N if N > 0 else 0
+            tpr_list.append(tpr)
+            fpr_list.append(fpr)
+
+        # Compute AUC using trapezoidal rule
+        auc = np.trapz(tpr_list, fpr_list)
+
+        # Plot ROC
+        plt.figure(figsize=(6, 4))
+        plt.plot(fpr_list, tpr_list, label=f"ROC Curve (AUC = {auc:.4f})", color="blue")
+        plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label="Random Classifier")
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("ROC Curve for my_best_model")
+        plt.legend(loc="lower right")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, format="png")
+
+        print(f"\n\tROC AUC (Area Under the Curver: {auc:.4f}")
+
 
 def train_XGBoost() -> dict:
     '''
@@ -525,7 +663,7 @@ def train_XGBoost() -> dict:
     alpha_vals = [1e-3, 1e-2, 1e-1, 1, 1e1, 1e2, 1e3]
     results = {}
 
-    loader = DataLoader("./", random_state=42)
+    loader = DataLoader("./bank.csv", random_state=42)
     loader.data_prep()
     loader.data_split()
 
@@ -552,7 +690,7 @@ def train_XGBoost() -> dict:
 
             model.fit(X_bootstrap, y_bootstrap)
             y_pred = model.predict(X_valid)
-            f1 = compute_f1_score(y_valid, y_pred)
+            f1 = ClassificationTree.compute_f1_score(y_valid, y_pred)
             f1_scores.append(f1)
 
         avg_f1 = np.mean(f1_scores)
@@ -587,214 +725,8 @@ my_best_model = XGBClassifier(
         max_depth = 5,
         n_estimators=100,
         eval_metric='logloss',
-        reg_lambda=10,
+        reg_lambda=0.01,
         random_state=42,
         n_jobs = 1
     )
 
-
-def precision(y_true, y_pred):
-    tp = np.sum((y_true == 1) & (y_pred == 1))
-    fp = np.sum((y_true == 0) & (y_pred == 1))
-    return tp / (tp + fp) if (tp + fp) > 0 else 0.0
-
-def recall(y_true, y_pred):
-    tp = np.sum((y_true == 1) & (y_pred == 1))
-    fn = np.sum((y_true == 1) & (y_pred == 0))
-    return tp / (tp + fn) if (tp + fn) > 0 else 0.0
-
-
-def compute_f1_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    '''
-    Compute the F1-score for binary classification (0/1 labels).
-
-    Args:
-        y_true: Ground truth labels
-        y_pred: Predicted labels
-
-    Returns:
-        F1-score as a float
-    '''
-    y_true = y_true.astype(int)
-    y_pred = y_pred.astype(int)
-
-    tp = np.sum((y_true == 1) & (y_pred == 1))
-    fp = np.sum((y_true == 0) & (y_pred == 1))
-    fn = np.sum((y_true == 1) & (y_pred == 0))
-
-    if tp + fp == 0 or tp + fn == 0:
-        return 0.0
-
-    precision = tp / (tp + fp)
-    recall = tp / (tp + fn)
-
-    if precision + recall == 0:
-        return 0.0
-
-    f1 = 2 * (precision * recall) / (precision + recall)
-    return f1
-
-def run_train_predict_with_decision_tree():
-
-    loader = DataLoader("./", 42)
-    loader.plot_histogram()
-
-    loader.data_prep()
-    loader.data_split()
-    print("\nFirst 10 rows/samples of the training data")
-    print(loader.data_train.head(11))
-
-    print("\nNow actaully running train and predict with my Decison Tree")
-    X_train, y_train = loader.extract_features_and_label(loader.data_train)
-    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
-
-    decision_tree = ClassificationTree(random_state = 42);
-    decision_tree.build_tree(X_train, y_train)
-    y_pred = decision_tree.predict(X_valid)
-
-    accuracy  = (y_pred == y_valid).mean()
-    prec = precision(y_valid, y_pred)
-    rec =  recall(y_valid, y_pred)
-    f1 = compute_f1_score(y_valid, y_pred)
-
-    #print(f"\tSimple Train and Predict Results: Accuracy Precison Recall F1-Score: ",
-    #      f"\n{accuracy:8.4f}, {prec:8.4f}, {rec:8.4f}, {f1:8.4f}"
-    #      , flush=True)
-    print(f"\tAccuracy  : {accuracy:.4f}")
-    print(f"\tPrecision : {prec:.4f}")
-    print(f"\tRecall    : {rec:.4f}")
-    print(f"\tF1 Score  : {f1:.4f}", flush=True)
-
-
-def run_grid_search():
-
-    global hyp_idx
-
-    for hyp_idx in range(0,len(hyp_list)):
-        loader = DataLoader("./", 42)
-        loader.plot_histogram()
-
-        loader.data_prep()
-        loader.data_split()
-
-        X_train, y_train = loader.extract_features_and_label(loader.data_train)
-        X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
-
-        decision_tree = ClassificationTree(random_state = 42);
-        decision_tree.build_tree(X_train, y_train)
-        y_pred = decision_tree.predict(X_valid)
-
-        accuracy  = (y_pred == y_valid).mean()
-        prec = precision(y_valid, y_pred)
-        rec =  recall(y_valid, y_pred)
-        f1 = compute_f1_score(y_valid, y_pred)
-
-        print(f"\tGridSearch: Acc, Prec, Recall, F1Score: ",
-              f"{accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}",
-              flush=True)
-
-def plot_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, save_path="roc_curve.png"):
-    '''
-    Compute and plot ROC curve using TPR/FPR at various thresholds.
-    '''
-
-    print(f"\nGetting Ready to plot ROC AUC curve")
-    # Sort by predicted probabilities descending
-    desc_sort = np.argsort(-y_prob)
-    y_true = y_true[desc_sort]
-    y_prob = y_prob[desc_sort]
-
-    # Total positives and negatives
-    P = np.sum(y_true == 1)
-    N = np.sum(y_true == 0)
-
-    tpr_list = []
-    fpr_list = []
-
-    tp = fp = 0
-    for i in range(len(y_true)):
-        if y_true[i] == 1:
-            tp += 1
-        else:
-            fp += 1
-        tpr = tp / P if P > 0 else 0
-        fpr = fp / N if N > 0 else 0
-        tpr_list.append(tpr)
-        fpr_list.append(fpr)
-
-    # Compute AUC using trapezoidal rule
-    auc = np.trapz(tpr_list, fpr_list)
-
-    # Plot ROC
-    plt.figure(figsize=(6, 4))
-    plt.plot(fpr_list, tpr_list, label=f"ROC Curve (AUC = {auc:.4f})", color="blue")
-    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label="Random Classifier")
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    plt.title("ROC Curve for my_best_model")
-    plt.legend(loc="lower right")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, format="png")
-
-    print(f"\n\tROC AUC (Area Under the Curver: {auc:.4f}")
-
-
-def run_xgboost():
-
-    print(f"\tSearch for best alpha with XG boost")
-    results = train_XGBoost()
-    best_alpha = results["best_alpha"]
-
-    loader = DataLoader("./", random_state=42)
-    loader.data_prep()
-    loader.data_split()
-
-    X_train, y_train = loader.extract_features_and_label(loader.data_train)
-    X_valid, y_valid = loader.extract_features_and_label(loader.data_valid)
-
-    my_best_model = XGBClassifier(
-        max_depth = 5,
-        n_estimators=100,
-        eval_metric='logloss',
-        reg_lambda=best_alpha,
-        random_state=42,
-        n_jobs = 1
-    )
-    my_best_model.fit(X_train, y_train)
-    print(f"\nNow Running the best XG Boost model trained with reg_lambda = {best_alpha}")
-
-    # Predict and evaluate
-    y_pred = my_best_model.predict(X_valid)
-    accuracy = (y_pred == y_valid).mean()
-    prec = precision(y_valid, y_pred)
-    rec = recall(y_valid, y_pred)
-    f1 = compute_f1_score(y_valid, y_pred)
-
-    print(f"\n\tmy_best_model Evaluation:")
-    print(f"\t\tAccuracy  : {accuracy:.4f}")
-    print(f"\t\tPrecision : {prec:.4f}")
-    print(f"\t\tRecall    : {rec:.4f}")
-    print(f"\t\tF1 Score  : {f1:.4f}")
-
-    # Predict probabilities for positive class
-    y_prob = my_best_model.predict_proba(X_valid)[:, 1]
-    plot_roc_curve(y_valid, y_prob, "roc_auc.png")
-
-def main():
-    global skip_grid_search
-    skip_grid_search = True
-
-    print("\nFirst running train and predict with my Decison Tree")
-    run_train_predict_with_decision_tree()
-
-    print("\nSecond: Running XG boost")
-    run_xgboost()
-
-    print("\nFinally: Running GridSearch for hyperparamete tuning for -")
-    print("       : Accuracey, Precision, Reacall, F1-Score")
-    skip_grid_search = False
-    run_grid_search()
-
-if __name__ == "__main__":
-     main()

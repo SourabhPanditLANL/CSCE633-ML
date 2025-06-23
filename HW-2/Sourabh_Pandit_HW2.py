@@ -9,11 +9,12 @@ hyp_list = []           # List for hyperparameter tuning in grid_search
 
 # Grid Search Options
 for ru in [False, True]:                      # replace unknown values ?
-    for depth in range(3, 8):                 # max tree depth
-        for split_size in range(3, 20):       # mininum sample split size
-            for entropy in [False, True]:     # use_entropy (False meanis use gini index)
-                for drop in [False, True]:    # drop_cols (drop colums day, duration, and default?
-                    hyp_list.append((ru, depth, split_size, entropy, drop))
+    for drop in [False, True]:                # drop_cols (drop colums day, duration, and default?
+        for upsample in [False, True]:        # Upsample the data for minority class ?
+            for depth in range(4, 12):                 # max tree depth
+                for split_size in range(5, 20, 2):       # mininum sample split size
+                    for entropy in [False, True]:     # use_entropy (False meanis use gini index)
+                        hyp_list.append((ru, drop, upsample, depth, split_size, entropy))
 
 
 '''
@@ -65,10 +66,12 @@ class DataLoader:
             self.drop_cols = False
             self.upsample_train_data = False #True
         else:
-            self.upsample_train_data = False
             self.replace_unknown = hyp_list[hyp_idx][0]
-            self.drop_cols = hyp_list[hyp_idx][4]
+            self.drop_cols = hyp_list[hyp_idx][1]
+            self.upsample_train_data = hyp_list[hyp_idx][2]
 
+        print(f"HYPLIST DataLoader {self.replace_unknown}, {self.drop_cols}, {self.upsample_train_data}",
+             flush=True)
 
     def data_split(self) -> None:
         '''
@@ -262,10 +265,12 @@ class ClassificationTree:
             self.min_samples_split = 12
             self.use_entropy = False #True
         else:
-            self.max_depth = hyp_list[hyp_idx][1]
-            self.min_samples_split = hyp_list[hyp_idx][2]
-            self.use_entropy = hyp_list[hyp_idx][3]
+            self.max_depth = hyp_list[hyp_idx][3]
+            self.min_samples_split = hyp_list[hyp_idx][4]
+            self.use_entropy = hyp_list[hyp_idx][5]
 
+        print(f"\tHYPLIST DecisionTree {self.max_depth}, {self.min_samples_split}, {self.use_entropy}",
+              flush=True)
 
     def split_crit(self, y: np.ndarray) -> float:
         '''
@@ -583,6 +588,9 @@ class ClassificationTree:
     def grid_search():
 
         global hyp_idx
+        global skip_grid_search
+
+        skip_grid_search = False
 
         for hyp_idx in range(0,len(hyp_list)):
             loader = DataLoader("./bank.csv", 42)

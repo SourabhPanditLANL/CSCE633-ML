@@ -70,8 +70,10 @@ class DataLoader:
             self.drop_cols = hyp_list[hyp_idx][1]
             self.upsample_train_data = hyp_list[hyp_idx][2]
 
+        '''
         print(f"HYPLIST DataLoader {self.replace_unknown}, {self.drop_cols}, {self.upsample_train_data}",
              flush=True)
+        '''
 
     def data_split(self) -> None:
         '''
@@ -269,8 +271,10 @@ class ClassificationTree:
             self.min_samples_split = hyp_list[hyp_idx][4]
             self.use_entropy = hyp_list[hyp_idx][5]
 
+        '''
         print(f"\tHYPLIST DecisionTree {self.max_depth}, {self.min_samples_split}, {self.use_entropy}",
               flush=True)
+        '''
 
     def split_crit(self, y: np.ndarray) -> float:
         '''
@@ -592,6 +596,9 @@ class ClassificationTree:
 
         skip_grid_search = False
 
+        print("\tMyGridSearch: Replace_uknown,drop_cols,upsample_data,max_depth,min_split_size,use_entropy,",
+              end='')
+        print("Accuracy,Precision,Recall,F1-SCore")
         for hyp_idx in range(0,len(hyp_list)):
             loader = DataLoader("./bank.csv", 42)
             loader.plot_histogram()
@@ -611,8 +618,7 @@ class ClassificationTree:
             rec =  ClassificationTree.recall(y_valid, y_pred)
             f1 = ClassificationTree.compute_f1_score(y_valid, y_pred)
 
-            print(f"\tGridSearch: Acc, Prec, Recall, F1Score: ",
-                  f"{accuracy:.4f}, {prec:.4f}, {rec:.4f}, {f1:.4f} for {hyp_list[hyp_idx]}",
+            print(f"\tMyGridSearch: {hyp_list[hyp_idx]},{accuracy:.4f},{prec:.4f},{rec:.4f},{f1:.4f}",
                   flush=True)
 
     @staticmethod

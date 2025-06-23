@@ -86,11 +86,11 @@ def run_xgboost():
     ClassificationTree.plot_roc_curve(y_valid, y_prob, "roc_auc.png")
 
 def main():
-    print("\nFirst running train and predict with my Decison Tree")
-    run_train_predict_with_decision_tree()
+    #print("\nFirst running train and predict with my Decison Tree")
+    #run_train_predict_with_decision_tree()
 
-    print("\nSecond: Running XG boost")
-    run_xgboost()
+    #print("\nSecond: Running XG boost")
+    #run_xgboost()
 
     print("\nFinally: GridSearch for hyperparame tuning for -Accuracy, Precision, Recall, F1-Score")
     run_grid_search()

@@ -82,9 +82,7 @@ class DataLoader:
         Add the split datasets to self.data_train, self.data_valid. Both of the split should still be pd.DataFrame.
         '''
 
-        print(f"DEBUG: data_split() - Came in", flush=True)
         if self.data_train is not None and self.data_valid is not None:
-            print(f"DEBUG: data_split() - Shortchanged", flush=True)
             return
 
         y_unique_values = set(self.data['y'].unique())
@@ -138,16 +136,13 @@ class DataLoader:
             self.data_train = pd.concat(
                   [neg, pos_upsampled]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
-        print(f"\tDEBUG: data_split() - Done", flush=True)
 
     def data_prep(self) -> None:
         '''
         You are asked to drop any rows with missing values and map categorical variables to numeric values.
         '''
 
-        print(f"DEBUG: data_prep() - Came in", flush=True)
         if self.prep_done == True:
-            print(f"DEBUG: shortchanged", flush=True)
             return
 
         df = self.data.copy()                   # Work on a safe copy
@@ -178,7 +173,6 @@ class DataLoader:
             df[col], _ = pd.factorize(df[col])
 
         self.data = df
-        print(f"DEBUG: data_prep() - Done", flush=True)
 
 
     """
@@ -246,11 +240,8 @@ class DataLoader:
             y_data: np.ndarray of shape (n_samples,) - Extracted labels
         '''
 
-        print(f"DEBUG: extract() - Came in with {type(data)} ", flush=True)
         X = data.drop(columns=['y']).values
-        print(f"DEBUG: extract() - 1 ", flush=True)
         y = data['y'].values
-        print(f"\tDEBUG: extract() - Done", flush=True)
         return(X, y)
 
 
@@ -357,12 +348,9 @@ class ClassificationTree:
             float: impurity score
         '''
 
-        #print(f"(DEBUG: split_crit() - Came in", flush=True)
         if self.use_entropy == True:
-            #print(f"(DEBUG: split_crit() - Returning Entropy", flush=True)
             return self.entropy(y)
         else:
-            #print(f"(DEBUG: split_crit() - Returning gini_index", flush=True)
             return self.gini_index(y)
 
 
@@ -373,8 +361,6 @@ class ClassificationTree:
         '''
         Public method to initiate tree construction. Stores the root node.
         '''
-
-        print(f"DEBUG: build_tree() - Came in", flush=True)
 
         def _build_tree_recursive(X: np.ndarray, y: np.ndarray, depth: int):
             # At a pure node (all labels are the same), return a leaf node
@@ -416,7 +402,6 @@ class ClassificationTree:
 
         # Start tree construction
         self.tree_root = _build_tree_recursive(X, y, depth=0)
-        print(f"\tDEBUG: build_tree() - Done", flush=True)
         return self.tree_root
 
 
@@ -429,7 +414,6 @@ class ClassificationTree:
         else None
         '''
 
-        print(f"DEBUG: search_best_split() - came in", flush=True)
         best_gain = -1
         best_split = None
         n_samples, n_features = X.shape
@@ -482,7 +466,6 @@ class ClassificationTree:
                         best_gain = gain
                         best_split = (feature_index, threshold, False)
 
-        print(f"\tDEBUG: search_best_split() - Done", flush=True)
         return best_split
 
 
@@ -497,7 +480,6 @@ class ClassificationTree:
         Returns:
             np.ndarray: Array of predictions
         '''
-        print(f"DEBUG: predict() - Came in", flush=True)
 
         if dbg_print:
             print(f"DEBUG: Enter predict()", flush=True)
@@ -519,7 +501,6 @@ class ClassificationTree:
                     return _predict_one(x, node.right)
 
         ret = np.array([_predict_one(x, self.tree_root) for x in X])
-        print(f"\tDEBUG: predict() - Done", flush=True)
         return ret
 
 

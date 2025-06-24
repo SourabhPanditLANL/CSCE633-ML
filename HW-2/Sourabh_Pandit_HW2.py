@@ -81,7 +81,9 @@ class DataLoader:
         Add the split datasets to self.data_train, self.data_valid. Both of the split should still be pd.DataFrame.
         '''
 
+        print(f"DEBUG: data_split() - Came in", flush=True)
         if self.data_train is not None and self.data_valid is not None:
+            print(f"DEBUG: data_split() - Shortchanged", flush=True)
             return
 
         y_unique_values = set(self.data['y'].unique())
@@ -92,9 +94,6 @@ class DataLoader:
         elif y_unique_values == {0, 1}:
             pos_val = 1
             neg_val = 0
-        else:
-            #print(f"Unexpected values: {y_unique_values}", flush=True)
-            exit(0)
 
 
         ## Train and Validation Split using Strata: Separate class neg_val and class pos_val
@@ -138,11 +137,17 @@ class DataLoader:
             self.data_train = pd.concat(
                   [neg, pos_upsampled]).sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
+        print(f"\tDEBUG: data_split() - Done", flush=True)
 
     def data_prep(self) -> None:
         '''
         You are asked to drop any rows with missing values and map categorical variables to numeric values.
         '''
+
+        print(f"DEBUG: data_prep() - Came in", flush=True)
+        if self.prep_done == True:
+            print(f"DEBUG: shortchanged", flush=True)
+            return
 
         df = self.data.copy()                   # Work on a safe copy
         df.columns = df.columns.str.strip()     # Clean column names
@@ -172,6 +177,7 @@ class DataLoader:
             df[col], _ = pd.factorize(df[col])
 
         self.data = df
+        print(f"DEBUG: data_prep() - Done", flush=True)
 
 
     """
@@ -239,8 +245,10 @@ class DataLoader:
             y_data: np.ndarray of shape (n_samples,) - Extracted labels
         '''
 
+        print(f"DEBUG: extract() - Came in", flush=True)
         X = data.drop(columns=['y']).values
         y = data['y'].values
+        print(f"\tDEBUG: extract() - Done", flush=True)
         return(X, y)
 
 
@@ -347,9 +355,12 @@ class ClassificationTree:
             float: impurity score
         '''
 
+        #print(f"(DEBUG: split_crit() - Came in", flush=True)
         if self.use_entropy == True:
+            #print(f"(DEBUG: split_crit() - Returning Entropy", flush=True)
             return self.entropy(y)
         else:
+            #print(f"(DEBUG: split_crit() - Returning gini_index", flush=True)
             return self.gini_index(y)
 
 
@@ -357,6 +368,8 @@ class ClassificationTree:
         '''
         Public method to initiate tree construction. Stores the root node.
         '''
+
+        print(f"DEBUG: build_tree() - Came in", flush=True)
 
         def _build_tree_recursive(X: np.ndarray, y: np.ndarray, depth: int):
             # At a pure node (all labels are the same), return a leaf node
@@ -398,61 +411,9 @@ class ClassificationTree:
 
         # Start tree construction
         self.tree_root = _build_tree_recursive(X, y, depth=0)
+        print(f"\tDEBUG: build_tree() - Done", flush=True)
         return self.tree_root
 
-
-    """
-    def build_tree(self, X: np.ndarray, y: np.ndarray) -> None:
-        '''
-        Public method to initiate tree construction. Stores the root node.
-        '''
-        self.tree_root = self._build_tree_recursive(X, y, depth=0)
-        return self.tree_root
-
-
-    def _build_tree_recursive(self, X: np.ndarray, y: np.ndarray, depth: int):
-
-        # At a pure node, (all labels are the same), No need to split further,
-        # it is a leaf node and we can return prediction
-        if np.unique(y).size == 1:
-            return self.Node(prediction=y[0])
-
-        # Alternately, stop condition: minimum samples or maximum depth reached
-        # We can't split further, it is a leaf node and we can return prediction
-        if len(y) < self.min_samples_split or depth >= self.max_depth:
-            majority_class = np.bincount(y.astype(int)).argmax()
-            return self.Node(prediction=majority_class)
-
-        # Find the best split.
-        split_result = self.search_best_split(X, y)
-
-        # If we can't split, prediction will be the majority class in the node
-        if split_result is None:
-            majority_class = np.bincount(y.astype(int)).argmax()
-            return self.Node(prediction=majority_class)
-
-        # if we can split, split_result contains feature_index, split_value and
-        # flag for categorical column
-        feature_index, split_value, is_categorical = split_result
-
-        # We have the best split params, now use them to actually split the data
-        X_left, y_left, X_right, y_right = self.split(X, y, feature_index, split_value, is_categorical)
-
-        ## Splitting makes no sense if all data end up in either left or right node alone.
-        if X_left is None or X_right is None:
-            majority_class = np.bincount(y.astype(int)).argmax()
-            return self.Node(prediction=majority_class)
-
-        # Recursively build the left and right subtrees
-        left_child = self._build_tree_recursive(X_left, y_left, depth + 1)
-        right_child = self._build_tree_recursive(X_right, y_right, depth + 1)
-
-        # Return a split node
-        return self.Node(split=(feature_index, split_value, is_categorical),
-                         left=left_child,
-                         right=right_child,
-                         prediction=None)
-    """
 
     def search_best_split(self, X: np.ndarray, y: np.ndarray):
         '''
@@ -462,6 +423,8 @@ class ClassificationTree:
         (feature_index, split_value, is_categorical) if a split is found,
         else None
         '''
+
+        print(f"DEBUG: search_best_split() - came in", flush=True)
         best_gain = -1
         best_split = None
         n_samples, n_features = X.shape
@@ -514,116 +477,10 @@ class ClassificationTree:
                         best_gain = gain
                         best_split = (feature_index, threshold, False)
 
+        print(f"\tDEBUG: search_best_split() - Done", flush=True)
         return best_split
 
 
-    """
-    ## Do not use exhaustive left_set, it hurt performance
-    def search_best_split(self, X: np.ndarray, y: np.ndarray):
-        '''
-        Search for the best feature and split value.
-
-        Returns:
-            (feature_index, split_value, is_categorical) if a split is found,
-            else None
-        '''
-        best_gain = -1
-        best_split = None
-        n_samples, n_features = X.shape
-
-        for feature_index in range(n_features):
-            feature_values = X[:, feature_index]
-            unique_values = np.unique(feature_values)
-
-            is_categorical = feature_index in self.categorical_indices
-
-            if is_categorical:
-                for val in unique_values:
-                    left_set = {val}
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set,
-                                                                  is_categorical=True)
-                    if X_left is None or X_right is None:
-                        continue
-
-                    gain = self.information_gain(y, y_left, y_right)
-                    if gain > best_gain:
-                        best_gain = gain
-                        best_split = (feature_index, left_set, True)
-
-            else:
-                sorted_vals = np.sort(unique_values)
-                for i in range(1, len(sorted_vals)):
-                    threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, threshold,
-                                                                  is_categorical=False)
-                    if X_left is None or X_right is None:
-                        continue
-
-                    gain = self.information_gain(y, y_left, y_right)
-                    if gain > best_gain:
-                        best_gain = gain
-                        best_split = (feature_index, threshold, False)
-
-        return best_split
-    """
-
-    """
-    This one usee exhausive teft set but Commented out because actually hurts performacen
-
-    ## Use exhaustive left_set
-    def search_best_split(self, X: np.ndarray, y: np.ndarray):
-
-        best_gain = -1
-        best_split = None
-        n_samples, n_features = X.shape
-
-        for feature_index in range(n_features):
-            feature_values = X[:, feature_index]
-            unique_values = np.unique(feature_values)
-
-            is_categorical = feature_index in self.categorical_indices
-            #print(f"DEBUG: CAT INDICES = {self.categorical_indices}", flush=True)
-
-            if is_categorical:
-                #print("\nDEBUG CATEGORICAL", flush=True)
-                num_vals = len(unique_values)
-
-                # Loop over all non-empty proper subsets (exclude full set)
-                for mask in range(1, 2 ** num_vals - 1):
-                    left_set = set()
-                    for i in range(num_vals):
-                        if (mask >> i) & 1:
-                            left_set.add(unique_values[i])
-
-                    #print(f"DEBUG: LEN_LEFT_SET: {len(left_set)}", flush=True)
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, left_set,
-                                                                  is_categorical=True)
-
-                    if X_left is None or X_right is None:
-                        continue
-
-                    gain = self.information_gain(y, y_left, y_right)
-                    if gain > best_gain:
-                        best_gain = gain
-                        best_split = (feature_index, left_set, True)
-
-            else:
-                #print("\nDEBUG NUMERICAL")
-                sorted_vals = np.sort(unique_values)
-                for i in range(1, len(sorted_vals)):
-                    threshold = (sorted_vals[i - 1] + sorted_vals[i]) / 2
-                    X_left, y_left, X_right, y_right = self.split(X, y, feature_index, threshold,
-                                                                  is_categorical=False)
-                    if X_left is None or X_right is None:
-                        continue
-
-                    gain = self.information_gain(y, y_left, y_right)
-                    if gain > best_gain:
-                        best_gain = gain
-                        best_split = (feature_index, threshold, False)
-
-        return best_split
-    """
 
     def predict(self, X: np.ndarray, dbg_print: bool = True) -> np.ndarray:
         '''
@@ -635,6 +492,8 @@ class ClassificationTree:
         Returns:
             np.ndarray: Array of predictions
         '''
+        print(f"DEBUG: predict() - Came in", flush=True)
+
         if dbg_print:
             print(f"DEBUG: Enter predict()", flush=True)
 
@@ -655,40 +514,8 @@ class ClassificationTree:
                     return _predict_one(x, node.right)
 
         ret = np.array([_predict_one(x, self.tree_root) for x in X])
+        print(f"\tDEBUG: predict() - Done", flush=True)
         return ret
-
-
-    """
-    def predict(self, X: np.ndarray, dbg_print:bool=True) -> np.ndarray:
-        '''
-        Predict classes for multiple samples.
-
-        Args:
-            X: numpy array with the same columns as the training data
-
-        Returns:
-            np.ndarray: Array of predictions
-        '''
-        if dbg_print:
-            print(f"DEBUG: Enter predict()", flush=True)
-        ret = np.array([self._predict_one(x, self.tree_root) for x in X])
-        return ret
-
-    def _predict_one(self, x: np.ndarray, node) -> int:
-        if node.is_leaf():
-            return node.prediction
-
-        if node.is_categorical:
-            if x[node.feature_idx] in node.split_value:
-                return self._predict_one(x, node.left)
-            else:
-                return self._predict_one(x, node.right)
-        else:
-            if x[node.feature_idx] <= node.split_value:
-                return self._predict_one(x, node.left)
-            else:
-                return self._predict_one(x, node.right)
-    """
 
 
     def entropy(self, y):

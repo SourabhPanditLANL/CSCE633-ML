@@ -245,8 +245,9 @@ class DataLoader:
             y_data: np.ndarray of shape (n_samples,) - Extracted labels
         '''
 
-        print(f"DEBUG: extract() - Came in", flush=True)
+        print(f"DEBUG: extract() - Came in with {type(data)} ", flush=True)
         X = data.drop(columns=['y']).values
+        print(f"DEBUG: extract() - 1 ", flush=True)
         y = data['y'].values
         print(f"\tDEBUG: extract() - Done", flush=True)
         return(X, y)

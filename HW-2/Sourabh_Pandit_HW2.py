@@ -73,6 +73,7 @@ class DataLoader:
         #TODO: Revisit this ...
         self.prep_done = False
         self.data_prep()
+        self.data_split()
 
 
     def data_split(self) -> None:
@@ -327,7 +328,7 @@ class ClassificationTree:
         def is_leaf(self):
             return self.prediction is not None
 
-    def __init__(self, random_state: int):
+    def __init__(self, random_state: int, max_depth:int=0):
 
         self.random_state = random_state
         np.random.seed(self.random_state)
@@ -364,6 +365,9 @@ class ClassificationTree:
             #print(f"(DEBUG: split_crit() - Returning gini_index", flush=True)
             return self.gini_index(y)
 
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
+        self.build_tree(X, y)
 
     def build_tree(self, X: np.ndarray, y: np.ndarray) -> None:
         '''

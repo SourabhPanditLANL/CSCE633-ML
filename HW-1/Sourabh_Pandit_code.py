@@ -165,7 +165,6 @@ class DataProcessor:
             axes[i].set_xlabel(feature)
             axes[i].set_ylabel('Frequency')
 
-        # Hide the last unused subplot
         if len(data.columns) < len(axes):
             axes[len(data.columns)].axis('off')
 
@@ -410,7 +409,7 @@ class LogisticRegression:
         return np.where(y_pred_proba >= self.prob_threshold, 1, 0)
 
     def criterion(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
-        """Calculate BCE loss.
+        """Calculate loss.
 
         Args:
             y_true: True target values
@@ -426,14 +425,14 @@ class LogisticRegression:
         return loss
 
     def F1_score(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
-        """Calculate F1 score with handling of edge cases.
+        """Calculate F1 score
 
         Args:
             y_true: Ground truth labels
             y_pred: Predicted labels
 
         Returns:
-            F1 score (between 0 and 1), or 0.0 for edge cases
+            F1 score (between 0 and 1)
         """
 
         tp = np.sum((y_true == 1) & (y_pred == 1))
@@ -820,12 +819,12 @@ def main():
     # =================================================================== #
     # Hyperparameter Tuning Linear Regression
     # =================================================================== #
-    #grid_search_linreg()
+    #grid_search_linregr(X_train_scaled, y_train, X_val_scaled, y_val)
 
     # =================================================================== #
     # Hyperparameter Tuning Logistic Regression
     # =================================================================== #
-    #grid_search_logregr()
+    #grid_search_logregr(X_train_scaled, y_train, X_val_scaled, y_val)
 
 
 if __name__ == "__main__":

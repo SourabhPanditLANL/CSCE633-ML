@@ -10,6 +10,8 @@ from sklearn.preprocessing import StandardScaler
 
 import matplotlib.pyplot as plt
 
+use_new_approach: bool = True #TODO: Remove this after test/dev
+
 '''
 Problem: University Admission Classification using SVMs
 
@@ -126,7 +128,7 @@ class SVMTrainer:
         '''
 
         print(f"\nEnter SVMTrainer:train()", flush=True)
-        self.model = SVC(kernel = kernel, **kwargs)
+        self.model = SVC(kernel = kernel, probability=True, random_state=42)
         self.model.fit(train_data, y_train)
         print(f"Exit SVMTrainer:train()\n", flush=True)
         return self.model
@@ -144,6 +146,10 @@ class SVMTrainer:
         else:
             raise AttributeError("Model has not been trained yet or does not have support_vectors_.")
 
+    def predict(self, y):
+        print(f"\nEnter SVMTrainer::predict()", flush=True)
+        print(f"Exit SVMTrainer::predict()\n", flush=True)
+        return self.model.predict(y)
 
 def plot_predictions(X, y_true, y_pred, feature_set, kernel_name, support_vectors=None):
     """
@@ -203,35 +209,55 @@ def main():
         'poly': {'kernel': 'poly', 'degree': 3, 'probability': True, 'random_state': 42}
     }
 
+    print(f"DEBUG-100 svm_kernels['linear'] = {svm_kernels['linear']}")
+    print(f"DEBUG-101 svm_kernels['rbf'] = {svm_kernels['rbf']}")
+    print(f"DEBUG-102 svm_kernels['poly'] = {svm_kernels['poly']}")
+
     results = {}
 
     for kernel_name, svm_params in svm_kernels.items():
         results[kernel_name] = {}
 
+        print(f"DEBUG-103 kernel_name = {kernel_name}, svm_params = {svm_params}", flush=True)
         for feature_set in feature_combos:
-            # Extract raw data for the selected features
+
+            # Instantiate and train SVM model
+            if use_new_approach:
+                trainer = SVMTrainer()
+            else:
+                model = SVC(**svm_params)
+
             X_train_combo = dl.train_data[feature_set].values
             X_val_combo = dl.val_data[feature_set].values
 
             # Scale features: fit scaler on training, transform on both
             scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train_combo)
-            X_val_scaled = scaler.transform(X_val_combo)
+            X_train_combo_scaled = scaler.fit_transform(X_train_combo)
+            X_val_combo_scaled = scaler.transform(X_val_combo)
 
-            # Instantiate and train SVM model
-            model = SVC(**svm_params)
-            #print(f"DEBUG-0: {kernel_name} -> **svm_params = {svm_params}")
 
-            model.fit(X_train_scaled, dl.y_train)
+            if use_new_approach:
+                trained_model = trainer.train(X_train_combo_scaled, dl.y_train, kernel_name, kwarg=svm_params)
+            else:
+                model.fit(X_train_combo_scaled, dl.y_train)
 
             # Store results
-            results[kernel_name][tuple(feature_set)] = {
-                'model': model,
-                'support_vectors': model.support_vectors_,
-                'train_pred': model.predict(X_train_scaled),
-                'val_pred': model.predict(X_val_scaled),
-                'scaler': scaler
-            }
+            if use_new_approach:
+                results[kernel_name][tuple(feature_set)] = {
+                    'model': trainer.model,
+                    'support_vectors': trainer.get_support_vectors(trainer.model),
+                    'train_pred': trainer.predict(X_train_combo_scaled),
+                    'val_pred': trainer.predict(X_val_combo_scaled),
+                    'scaler': scaler
+                }
+            else:
+                results[kernel_name][tuple(feature_set)] = {
+                    'model': model,
+                    'support_vectors': model.support_vectors_,
+                    'train_pred': model.predict(X_train_combo_scaled),
+                    'val_pred': model.predict(X_val_combo_scaled),
+                    'scaler': scaler
+                }
 
     # Visualization: plot training predictions for each kernel/feature combo
     for kernel_name in results:

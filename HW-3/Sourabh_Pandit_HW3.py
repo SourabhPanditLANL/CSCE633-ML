@@ -1,16 +1,13 @@
-import numpy as npy
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.svm import SVC
-
-#TODO: Check with Dr. Mortazavi if this is OK to use
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
 
-import matplotlib.pyplot as plt
-
-use_new_approach: bool = True #TODO: Remove this after test/dev
+#Just for test purposes
+use_svmtrainer: bool = True
 
 '''
 Problem: University Admission Classification using SVMs
@@ -39,14 +36,10 @@ class DataLoader:
             data_path: absolute path to your data file
         """
 
-        print(f"\nEnter Dataloader(): ", flush=True)
-
+        print(f"\nEnter Dataloader()::__Init__() ", flush=True)
 
         # TODO：complete your dataloader here!
         self.data = pd.read_csv(data_path)
-        print(f"\tself.data.shape = {self.data.shape}")
-        print(f"\tself.data.columns = {self.data.columns}")
-
 
         if self.data.isna().any(axis=1).sum() > 0:
             df = self.data;
@@ -58,11 +51,6 @@ class DataLoader:
         self.data = self.create_binary_label(self.data)
         new_label_data = self.data['label'].values
 
-        diff_label_data = (old_label_data - new_label_data)**2
-        sum_label_data = diff_label_data.sum()
-        print(f"\tDEBUG: DIFF SUM = {sum_label_data}")
-
-
         self.X_train, self.X_val, self.y_train, self.y_val = self.data_split(self.data)
 
         self.train_data = pd.DataFrame(self.X_train, columns=self.features)
@@ -71,11 +59,10 @@ class DataLoader:
         self.val_data = pd.DataFrame(self.X_val, columns=self.features)
         self.val_data['lable'] = self.y_val
 
-        print(f"\tself.train_data.shape = {self.train_data.shape} {type(self.train_data)}", flush=True)
-        print(f"\tself.val_data.shape = {self.val_data.shape} {type(self.val_data)}", flush=True)
-        print(f"\tself.y_train.shape = {self.y_train.shape}", flush=True)
-        print(f"\tself.y_val.shape = {self.y_val.shape}", flush=True)
-        print(f"\tExit Dataloader(): \n", flush=True)
+        print(f"    data: {self.data.shape}, \n    data.columns = \n\t{self.data.columns}")
+        print(f"\n    train_data: {self.train_data.shape}, val_data: {self.val_data.shape}", flush=True)
+        print(f"    y_train   : {self.y_train.shape}      y_val  : {self.y_val.shape}", flush=True)
+        print(f"    Exit Dataloader()::__init__()", flush=True)
 
 
     def create_binary_label(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -83,20 +70,19 @@ class DataLoader:
         Create a binary label for the training data.
         '''
 
-        print(f"\nEnter create_binary_label()", flush=True)
+        print(f"Enter DataLoader::create_binary_label()", end = ' --> ', flush=True)
         df['label'] = (df['Chance of Admit'] > df['Chance of Admit'].median()).astype(int)
-        print(f"Exit create_binary_label()\n", flush=True)
+        print(f"Exit DataLoader::create_binary_label()", flush=True)
 
         return df
 
     def data_split(self, df: pd.DataFrame):
 
-        print(f"\nEnter data_split()", flush=True)
-        print(f"\tDEBUG: data_split() df.columns = {df.columns}", flush=True)
+        print(f"Enter DataLoader::data_split()", end='          -->  ', flush=True)
         X = df[self.features]
         y = df['label']
 
-        print(f"Exit data_split()\n", flush=True)
+        print(f"    Exit DataLoader::data_split()", flush=True)
         return (train_test_split(X,
                                  y,
                                  test_size=0.2,         # 20% for validation
@@ -109,9 +95,9 @@ class DataLoader:
 class SVMTrainer:
     def __init__(self):
 
-        print(f"\nEnter SVMTrainer:__init__()", flush=True)
+        print(f"\nEnter SVMTrainer::__init__()", end='  -->  ', flush=True)
         self.model =  None
-        print(f"Exit SVMTrainer:__init__()\n", flush=True)
+        print(f"Exit SVMTrainer::__init__()", flush=True)
 
     #def train(self, self.train_data: np.ndarray, y_train: np.ndarray, kernel: str, **kwargs) -> SVC:
     def train(self, train_data: np.ndarray, y_train: np.ndarray, kernel: str, **kwargs) -> SVC:
@@ -127,10 +113,10 @@ class SVMTrainer:
             SVC: Trained sklearn.svm.SVC model
         '''
 
-        print(f"\nEnter SVMTrainer:train()", flush=True)
+        print(f"Enter SVMTrainer::train()", end='     -->  ', flush=True)
         self.model = SVC(kernel = kernel, probability=True, random_state=42)
         self.model.fit(train_data, y_train)
-        print(f"Exit SVMTrainer:train()\n", flush=True)
+        print(f"Exit SVMTrainer::train()", flush=True)
         return self.model
 
 
@@ -139,19 +125,20 @@ class SVMTrainer:
         Get the support vectors from the trained SVM model.
         '''
 
-        print(f"\nEnter SVMTrainer:get_support_vectory()", flush=True)
+        print(f"Enter SVMTrainer::get_support_vector()", end='  -->  ', flush=True)
         if self.model is not None and hasattr(self.model, "support_vectors_"):
-            print(f"Exit SVMTrainer:get_support_vectory()\n", flush=True)
+            print(f"Exit SVMTrainer::get_support_vector()", flush=True)
             return self.model.support_vectors_
         else:
             raise AttributeError("Model has not been trained yet or does not have support_vectors_.")
 
     def predict(self, y):
-        print(f"\nEnter SVMTrainer::predict()", flush=True)
-        print(f"Exit SVMTrainer::predict()\n", flush=True)
-        return self.model.predict(y)
+        print(f"Enter SVMTrainer::predict()", end='   -->  ', flush=True)
+        retval = self.model.predict(y)
+        print(f"Exit SVMTrainer::predict()", flush=True)
+        return retval
 
-def plot_predictions(X, y_true, y_pred, feature_set, kernel_name, support_vectors=None):
+def plot_predictions(X, y_true, y_pred, feature_set, kernel_name, support_vectors=None, fig_name="plot.png"):
     """
     Plots 2D scatter of data points, colored by predicted label.
 
@@ -179,7 +166,8 @@ def plot_predictions(X, y_true, y_pred, feature_set, kernel_name, support_vector
     plt.title(f"SVM {kernel_name} Kernel\nFeatures: {feature_set[0]} vs {feature_set[1]}")
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    plt.savefig(fig_name, dpi=300)
+    #plt.show()
 
 
 '''
@@ -209,20 +197,15 @@ def main():
         'poly': {'kernel': 'poly', 'degree': 3, 'probability': True, 'random_state': 42}
     }
 
-    print(f"DEBUG-100 svm_kernels['linear'] = {svm_kernels['linear']}")
-    print(f"DEBUG-101 svm_kernels['rbf'] = {svm_kernels['rbf']}")
-    print(f"DEBUG-102 svm_kernels['poly'] = {svm_kernels['poly']}")
-
     results = {}
 
     for kernel_name, svm_params in svm_kernels.items():
         results[kernel_name] = {}
 
-        print(f"DEBUG-103 kernel_name = {kernel_name}, svm_params = {svm_params}", flush=True)
         for feature_set in feature_combos:
 
             # Instantiate and train SVM model
-            if use_new_approach:
+            if use_svmtrainer:
                 trainer = SVMTrainer()
             else:
                 model = SVC(**svm_params)
@@ -236,15 +219,15 @@ def main():
             X_val_combo_scaled = scaler.transform(X_val_combo)
 
 
-            if use_new_approach:
+            if use_svmtrainer:
                 trained_model = trainer.train(X_train_combo_scaled, dl.y_train, kernel_name, kwarg=svm_params)
             else:
                 model.fit(X_train_combo_scaled, dl.y_train)
 
             # Store results
-            if use_new_approach:
+            if use_svmtrainer:
                 results[kernel_name][tuple(feature_set)] = {
-                    'model': trainer.model,
+                    'model': trained_model,
                     'support_vectors': trainer.get_support_vectors(trainer.model),
                     'train_pred': trainer.predict(X_train_combo_scaled),
                     'val_pred': trainer.predict(X_val_combo_scaled),
@@ -261,39 +244,31 @@ def main():
 
     # Visualization: plot training predictions for each kernel/feature combo
     for kernel_name in results:
-        #print(f"DEBUG: resutls = {results[kernel_name]}", flush=True)
         for feature_set in results[kernel_name]:
-            print("", end='')
-            #print(f"DEBUG-1: feature_set {feature_set}", flush=True)
-            #print(f"DEBUG-2: {results[kernel_name][feature_set]['train_pred']}", flush=True)
-            ##print(f"DEBUG-3: {dl.train_data[['CGPA', 'SOP']].values}", flush=True)
-            #print(f"DEBUG-4: {dl.train_data[list(feature_set)]}", flush= None)
-
-            '''
+            fig_name = f"validation_acc_{kernel_name}_{feature_set[0]}_{feature_set[1]}.png"
             plot_predictions(
                 dl.train_data[list(feature_set)].values,
                 dl.y_train.values,
                 results[kernel_name][feature_set]['train_pred'],
                 feature_set,
-                kernel_name
+                kernel_name,
+                fig_name=fig_name
             )
-            '''
 
     # Evaluate on validation set to find best combo
     best_acc = 0
     best_combo = None
+
+    print("\n\nValidation Accuracy: ")
     for kernel_name in results:
         for feature_set in results[kernel_name]:
-            acc = accuracy_score(
-                dl.y_val.values,
-                results[kernel_name][feature_set]['val_pred']
-            )
-            print(f"Validation accuracy for {kernel_name} with {feature_set}: {acc:.3f}")
+            acc = accuracy_score( dl.y_val.values, results[kernel_name][feature_set]['val_pred'])
+            print(f"    Validation accuracy for {kernel_name} with {feature_set}: {acc:.3f}")
             if acc > best_acc:
                 best_acc = acc
                 best_combo = (kernel_name, feature_set)
 
-    print(f"Best model: {best_combo} with accuracy {best_acc:.3f}")
+    print(f"\nBest model: {best_combo} with accuracy {best_acc:.3f}\n")
 
 if __name__ == "__main__":
     main()

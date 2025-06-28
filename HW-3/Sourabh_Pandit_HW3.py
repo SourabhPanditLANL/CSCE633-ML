@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.svm import SVC
 
-#TODO: Check if OK to use
+#TODO: Check with Dr. Mortazavi if this is OK to use
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
@@ -58,7 +58,6 @@ class DataLoader:
 
         diff_label_data = (old_label_data - new_label_data)**2
         sum_label_data = diff_label_data.sum()
-
         print(f"\tDEBUG: DIFF SUM = {sum_label_data}")
 
 
@@ -107,6 +106,7 @@ class DataLoader:
 
 class SVMTrainer:
     def __init__(self):
+
         print(f"\nEnter SVMTrainer:__init__()", flush=True)
         self.model =  None
         print(f"Exit SVMTrainer:__init__()\n", flush=True)
@@ -124,6 +124,7 @@ class SVMTrainer:
         Returns:
             SVC: Trained sklearn.svm.SVC model
         '''
+
         print(f"\nEnter SVMTrainer:train()", flush=True)
         self.model = SVC(kernel = kernel, **kwargs)
         self.model.fit(train_data, y_train)
@@ -135,6 +136,7 @@ class SVMTrainer:
         '''
         Get the support vectors from the trained SVM model.
         '''
+
         print(f"\nEnter SVMTrainer:get_support_vectory()", flush=True)
         if self.model is not None and hasattr(self.model, "support_vectors_"):
             print(f"Exit SVMTrainer:get_support_vectory()\n", flush=True)
@@ -153,17 +155,13 @@ def plot_predictions(X, y_true, y_pred, feature_set, kernel_name, support_vector
         y_pred: array-like of shape (n_samples,), predicted labels
         feature_set: list of two feature names (e.g., ['CGPA', 'SOP'])
         kernel_name: string name of the kernel
-        support_vectors: (optional) array of support vectors (n_support, 2)
+        support_vectors: Array of support vectors
     """
     plt.figure(figsize=(6, 5))
 
-    # Plot predicted labels
     scatter = plt.scatter(X[:, 0], X[:, 1], c=y_pred, cmap='bwr', edgecolor='k', alpha=0.6, label='Predicted label')
-
-    # Optional: Overlay true labels for comparison (can skip for clarity)
     # plt.scatter(X[:, 0], X[:, 1], c=y_true, cmap='coolwarm', marker='x', alpha=0.3, label='True label')
 
-    # Optional: Highlight support vectors
     if support_vectors is not None:
         plt.scatter(
             support_vectors[:, 0], support_vectors[:, 1],
@@ -232,7 +230,7 @@ def main():
                 'support_vectors': model.support_vectors_,
                 'train_pred': model.predict(X_train_scaled),
                 'val_pred': model.predict(X_val_scaled),
-                'scaler': scaler  # Useful if you want to inverse-transform for plotting
+                'scaler': scaler
             }
 
     # Visualization: plot training predictions for each kernel/feature combo

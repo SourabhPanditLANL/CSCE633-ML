@@ -819,12 +819,12 @@ def main():
     # =================================================================== #
     # Hyperparameter Tuning Linear Regression
     # =================================================================== #
-    #grid_search_linregr(X_train_scaled, y_train, X_val_scaled, y_val)
+    grid_search_linregr(X_train_scaled, y_train, X_val_scaled, y_val)
 
     # =================================================================== #
     # Hyperparameter Tuning Logistic Regression
     # =================================================================== #
-    #grid_search_logregr(X_train_scaled, y_train, X_val_scaled, y_val)
+    grid_search_logregr(X_train_scaled, y_train, X_val_scaled, y_val)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
 
-#Just for test purposes
+# Just for test purposes
 use_svmtrainer: bool = True
 
 '''
@@ -99,7 +99,6 @@ class SVMTrainer:
         self.model =  None
         print(f"Exit SVMTrainer::__init__()", flush=True)
 
-    #def train(self, self.train_data: np.ndarray, y_train: np.ndarray, kernel: str, **kwargs) -> SVC:
     def train(self, train_data: np.ndarray, y_train: np.ndarray, kernel: str, **kwargs) -> SVC:
         '''
         Train the SVM model with the given kernel and parameters.
@@ -152,8 +151,10 @@ def plot_predictions(X, y_true, y_pred, feature_set, kernel_name, support_vector
     """
     plt.figure(figsize=(6, 5))
 
-    scatter = plt.scatter(X[:, 0], X[:, 1], c=y_pred, cmap='bwr', edgecolor='k', alpha=0.6, label='Predicted label')
-    # plt.scatter(X[:, 0], X[:, 1], c=y_true, cmap='coolwarm', marker='x', alpha=0.3, label='True label')
+    class_0 = y_pred == 0
+    class_1 = y_pred == 1
+    plt.scatter(X[class_0, 0], X[class_0, 1], color='red', edgecolor='k', alpha=0.6, label='Class 0')
+    plt.scatter(X[class_1, 0], X[class_1, 1], color='blue', edgecolor='k', alpha=0.6, label='Class 1')
 
     if support_vectors is not None:
         plt.scatter(
@@ -164,7 +165,7 @@ def plot_predictions(X, y_true, y_pred, feature_set, kernel_name, support_vector
     plt.xlabel(feature_set[0])
     plt.ylabel(feature_set[1])
     plt.title(f"SVM {kernel_name} Kernel\nFeatures: {feature_set[0]} vs {feature_set[1]}")
-    plt.legend()
+    plt.legend(loc='lower right')
     plt.tight_layout()
     plt.savefig(fig_name, dpi=300)
     #plt.show()
@@ -229,8 +230,8 @@ def main():
                 results[kernel_name][tuple(feature_set)] = {
                     'model': trained_model,
                     'support_vectors': trainer.get_support_vectors(trainer.model),
-                    'train_pred': trainer.predict(X_train_combo_scaled),
-                    'val_pred': trainer.predict(X_val_combo_scaled),
+                    'train_pred': trained_model.predict(X_train_combo_scaled),
+                    'val_pred': trained_model.predict(X_val_combo_scaled),
                     'scaler': scaler
                 }
             else:
@@ -241,6 +242,9 @@ def main():
                     'val_pred': model.predict(X_val_combo_scaled),
                     'scaler': scaler
                 }
+
+            print(f"DEBUG: Number of Support vectors: {len(results[kernel_name][tuple(feature_set)]['support_vectors'])}")
+
 
     # Visualization: plot training predictions for each kernel/feature combo
     for kernel_name in results:

@@ -177,7 +177,7 @@ class CNN(nn.Module):
     # ################################################### #
     # CNN Constructor/CNN Architecture
     # ################################################### #
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=4):
         """
         Initializes the layers of the CNN model.
 
@@ -230,7 +230,7 @@ class CNN(nn.Module):
         x = self.conv1(x)             # [B, 3, 224, 224] → [B, 16, 112, 112]
         x = self.conv2(x)             # → [B, 32, 56, 56]
 
-        # 🔁 Flatten Step (remember this!)
+        #  Flatten Step
         x = x.view(x.size(0), -1)     # → [B, 100352]
 
         x = self.fc(x)                # → [B, num_classes]
@@ -249,8 +249,9 @@ def calculate_mean_std(**kwargs):
     """
     # return [mean_r, mean_g, mean_b], [std_r, std_g, std_b]
 
-    print (f"calclulate_mean_std(): kwargs: {kwargs}")
-    return [0.5127117037773132, 0.45288100838661194, 0.39744383096694946], [0.24955996870994568, 0.25343775749206543, 0.2614697515964508]
+    means = [0.5127117037773132, 0.45288100838661194, 0.39744383096694946]
+    stdevs = [0.24955996870994568, 0.25343775749206543, 0.2614697515964508]
+    return means, stdevs
 
 '''
 All of the following functions are optional. They are provided to help you get started.
@@ -359,6 +360,16 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed for reproducibility')
 
+
+    parser.add_argument('--epochs', type=int, default=50,
+                        help='Number of Epochs')
+
+    parser.add_argument('--bs', type=int, default=8,
+                        help='Batch Size')
+
+    parser.add_argument('--lr', type=float, default=0.001,
+                        help='Learning Rate')
+
     return parser.parse_args()
 
 def test_dataset():
@@ -377,7 +388,7 @@ def test_cnn_constructor():
     print(f"Total parameters: {total_params}")
 
 def debug_forward_pass():
-    model = CNN(num_classes=5)  # Adjust for your dataset
+    model = CNN(num_classes=4)  # Adjust for your dataset
     x = torch.randn(1, 3, 224, 224)  # A single dummy image
 
     print(f"Input: {x.shape}")
@@ -425,8 +436,8 @@ def test_training():
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False)
 
     # Initialize model
     model = CNN(num_classes=num_classes)

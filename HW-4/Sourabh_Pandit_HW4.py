@@ -30,20 +30,20 @@ class SUN397Dataset(Dataset):
             transform (callabel, optional): Optional transform to be applied on an image.
         """
 
-        self.data_dir = data_dir
-        self.image_paths = []
-        self.labels = []
+        self.data_dir = data_dir    # Root dir for data
+        self.image_paths = []       # List of pathes to images
+        self.labels = []            # Class lablel bedroom, airport etc
 
-        # Find all class folders upto 2 levels deep
-        class_folders = []
+        class_folders = []          # Find all class folders upto 2 levels deep
+
         for subdir in os.listdir(data_dir):
-            subdir_path = os.path.join(data_dir, subdir)
+            subdir_path = os.path.join(data_dir, subdir) # Like ./data/a etc
             print(f"SUBDIR: {subdir} \t {subdir_path}")
 
             if os.path.isdir(subdir_path):
                 print(f"\t{subdir_path} is a dir itself")
                 for cls_name in os.listdir(subdir_path):
-                    full_cls_path = os.path.join(subdir_path, cls_name)
+                    full_cls_path = os.path.join(subdir_path, cls_name) # like ./data/a/bedroom
                     print(f"\t\tClass Name/Path {cls_name}:  {full_cls_path} ")
                     if os.path.isdir(full_cls_path):
                         class_folders.append(full_cls_path)
@@ -54,10 +54,11 @@ class SUN397Dataset(Dataset):
         class_names = sorted([os.path.basename(path) for path in class_folders])
         self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(class_names)}
         print(f"class_names: {class_names}")
-        # Step 3: Walk through all class folders and collect image paths + labels
+
+        #  Collect all image_paths and lables by iterating through all class folders
         for cls_path in class_folders:
-            cls_name = os.path.basename(cls_path)
-            label = self.class_to_idx[cls_name]
+            cls_name = os.path.basename(cls_path)   # Class names are the same as folder names
+            label = self.class_to_idx[cls_name]     # 0: bedroom, etc
 
             for fname in os.listdir(cls_path):
                 if fname.endswith(".jpg"):
@@ -68,7 +69,7 @@ class SUN397Dataset(Dataset):
         print(f"self.class_to_idx: {self.class_to_idx}")
 
         self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
+            #TODO transforms.Resize((224, 224)),
             transforms.ToTensor()
         ])
 
@@ -121,7 +122,7 @@ class SUN397Dataset(Dataset):
     # Compute mean and std deviation for RGG channels for
     # all the images in the dataset
     # ################################################### #
-    def compute_mean_std(self, batch_size=64, num_workers=0):
+    def compute_mean_std(self, batch_size=1, num_workers=0):
         """
         Computes per-channel mean and standard deviation of the dataset.
 
@@ -135,7 +136,7 @@ class SUN397Dataset(Dataset):
         # Temporarily use basic transform without normalization
         original_transform = self.transform
         self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
+            #TODO transforms.Resize((224, 224)),
             transforms.ToTensor()
         ])
 
@@ -152,6 +153,7 @@ class SUN397Dataset(Dataset):
         ) as progress:
             task = progress.add_task("[cyan]Computing mean/std...", total=len(loader))
 
+            #for images, _ in loader:
             for images, _ in loader:
                 total_pixels += images.numel() / 3
                 channel_sum += images.sum(dim=[0, 2, 3])
@@ -187,16 +189,16 @@ class CNN(nn.Module):
 
         # First convolutional block
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=3, out_channels=8, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2)  # Output: 16 x 112 x 112
+            nn.MaxPool2d(kernel_size=2)  # Output: 8 x 112 x 112
         )
 
         # Second convolutional block
         self.conv2 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.Conv2d(8, 16, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2)  # Output: 32 x 56 x 56
+            nn.MaxPool2d(kernel_size=2)  # Output: 16 x 56 x 56
         )
 
         '''
@@ -210,7 +212,7 @@ class CNN(nn.Module):
         '''
 
         # Fully connected layer (flatten first)
-        self.fc = nn.Linear(32 * 56 * 56, num_classes)
+        self.fc = nn.Linear(16 * 56 * 56, num_classes)
 
     # ################################################### #
     # Forward pass
@@ -248,9 +250,7 @@ def calculate_mean_std(**kwargs):
     # return [mean_r, mean_g, mean_b], [std_r, std_g, std_b]
 
     print (f"calclulate_mean_std(): kwargs: {kwargs}")
-    #return  [0.5286416411399841, 0.4668087661266327, 0.41086822748184204], [0.24868625402450562, 0.251262903213501, 0.2590216398239136]
-    #return [0.5213578939437866, 0.46096646785736084, 0.4045642018318176], [0.24787957966327667, 0.2478039413690567, 0.2569194734096527]
-    return [0.521358, 0.460966, 0.404564], [0.24788, 0.247804, 0.256919]
+    return [0.5127117037773132, 0.45288100838661194, 0.39744383096694946], [0.24955996870994568, 0.25343775749206543, 0.2614697515964508]
 
 '''
 All of the following functions are optional. They are provided to help you get started.
@@ -347,88 +347,6 @@ def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, device="
 
 
 
-'''
-#def train(model, train_loader, **kwargs):
-def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, device="cpu"):
-
-    def evaluate(model, loader):
-        model.eval()
-        correct = 0
-        total = 0
-        val_loss = 0.0
-        with torch.no_grad():
-            for images, labels in loader:
-                images = images.to(device)
-                labels = labels.to(device)
-
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
-
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-
-        accuracy = 100 * correct / total
-        avg_val_loss = val_loss / len(loader)
-        return accuracy, avg_val_loss
-
-
-
-    model = model.to(device)
-    model.train()
-
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-
-    """
-    best_loss = float("inf")
-    """
-    best_val_acc = 0.0
-
-    for epoch in range(num_epochs):
-        running_loss = 0.0
-
-        for i, (images, labels) in enumerate(train_loader):
-            images = images.to(device)
-            labels = labels.to(device)
-
-            # Forward pass
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-
-            # Backward + optimize
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-
-            if (i + 1) % 10 == 0:
-                print(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}")
-
-        if val_loader:
-            val_acc, val_loss = evaluate(model, val_loader)
-            print(f"Validation → Accuracy: {val_acc:.2f}%, Loss: {val_loss:.4f}")
-
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save(model.state_dict(), "model.pt")
-            print(f"New best model saved (Val Accuracy: {val_acc:.2f}%)")
-
-        """
-        avg_loss = running_loss / len(train_loader)
-        print(f"Epoch [{epoch+1}/{num_epochs}] completed. Avg Loss: {avg_loss:.4f}")
-
-        # Save best model
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-            torch.save(model.state_dict(), "model.pt")
-            print(f"New best model saved with loss {best_loss:.4f}")
-        """
-'''
-
-
 def test(model, test_loader, **kwargs):
     pass
 
@@ -451,7 +369,7 @@ def test_dataset():
     print(f"Exit Test()")
 
 def test_cnn_constructor():
-    model = CNN(num_classes=5)  # Adjust to your dataset's class count
+    model = CNN(num_classes=4)  # Adjust to your dataset's class count
     print(model)
 
     # Count total parameters
@@ -514,7 +432,7 @@ def test_training():
     model = CNN(num_classes=num_classes)
 
     # Train
-    train(model, train_loader, val_loader=val_loader, num_epochs=15, lr=0.001, device="cpu")
+    train(model, train_loader, val_loader=val_loader, num_epochs=15, lr=0.0001, device="cpu")
 
 
 # ################################################### #

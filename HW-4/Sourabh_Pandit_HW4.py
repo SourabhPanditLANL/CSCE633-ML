@@ -30,18 +30,24 @@ class SUN397Dataset(Dataset):
             transform (callabel, optional): Optional transform to be applied on an image.
         """
 
-        self.data_dir = data_dir    # Root dir for data
-        self.image_paths = []       # List of pathes to images
-        self.labels = []            # Class lablel bedroom, airport etc
+        # Root dir for data
+        self.data_dir = data_dir
+
+        # List of pathes to images
+        self.image_paths = []
+
+        # Class lablel bedroom, airport etc
+        self.labels = []
 
         class_folders = []          # Find all class folders upto 2 levels deep
 
+        # Iterate over the data dir
         for subdir in os.listdir(data_dir):
-            subdir_path = os.path.join(data_dir, subdir) # Like ./data/a etc
+            # Like ./data/a etc
+            subdir_path = os.path.join(data_dir, subdir)
             print(f"SUBDIR: {subdir} \t {subdir_path}")
 
             if os.path.isdir(subdir_path):
-                print(f"\t{subdir_path} is a dir itself")
                 for cls_name in os.listdir(subdir_path):
                     full_cls_path = os.path.join(subdir_path, cls_name) # like ./data/a/bedroom
                     print(f"\t\tClass Name/Path {cls_name}:  {full_cls_path} ")
@@ -69,14 +75,13 @@ class SUN397Dataset(Dataset):
         print(f"self.class_to_idx: {self.class_to_idx}")
 
         self.transform = transforms.Compose([
-            #TODO transforms.Resize((224, 224)),
             transforms.ToTensor()
         ])
 
-        # Step 4: Compute per-channel mean and std
+        # Compute per-channel mean and std
         mean, std = self.compute_mean_std()
 
-        # Step 5: Set final transform with normalization
+        # Set final transform with normalization
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -189,30 +194,46 @@ class CNN(nn.Module):
 
         # First convolutional block
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=8, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2)  # Output: 8 x 112 x 112
+            nn.MaxPool2d(kernel_size=2)     # Output: 64 x 112 x 112
         )
 
         # Second convolutional block
         self.conv2 = nn.Sequential(
-            nn.Conv2d(8, 16, kernel_size=3, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2)  # Output: 16 x 56 x 56
+            nn.MaxPool2d(kernel_size=2)     # Output: 128 x 56 x 56
         )
 
-        '''
-        Input   :  images of size [3, 224, 224]; 3 channels 224/224 pixels
+        # Third convolutional block
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2)     # Output: 256 x 28 x 28
+        )
 
-        Output Shapes Summary (for 224×224 input):
-            Conv1 → MaxPool: 16×112×112
-            Conv2 → MaxPool: 32×56×56
-                # Size of flattened tensor
-                -> FC input = 32×56×56 = 100352
-        '''
+        # Fourth convolutional block
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.AdaptiveAvgPool2d((8, 8))    # Output: 512 x 8 x 8
+        )
 
         # Fully connected layer (flatten first)
-        self.fc = nn.Linear(16 * 56 * 56, num_classes)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(512 * 8 * 8, 512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_classes)
+        )
+
 
     # ################################################### #
     # Forward pass
@@ -227,14 +248,23 @@ class CNN(nn.Module):
         Returns:
             Tensor: Output of the model.
         """
-        x = self.conv1(x)             # [B, 3, 224, 224] → [B, 16, 112, 112]
-        x = self.conv2(x)             # → [B, 32, 56, 56]
+        #print(f"[DEBUG] Input: {x.shape}")           # [B, 3, 224, 224]
+        x = self.conv1(x)
+        #print(f"[DEBUG] After conv1: {x.shape}")     # [B, 64, 112, 112]
+        x = self.conv2(x)
+        #print(f"[DEBUG] After conv2: {x.shape}")     # [B, 128, 56, 56]
+        x = self.conv3(x)
+        #print(f"[DEBUG] After conv3: {x.shape}")     # [B, 256, 28, 28]
+        x = self.conv4(x)
+        #print(f"[DEBUG] After conv4: {x.shape}")     # [B, 512, 8, 8]
 
-        #  Flatten Step
-        x = x.view(x.size(0), -1)     # → [B, 100352]
+        x = x.view(x.size(0), -1)  # Flatten
+        #print(f"[DEBUG] After flatten: {x.shape}")   # [B, 32768]
 
-        x = self.fc(x)                # → [B, num_classes]
+        x = self.classifier(x)
+        #print(f"[DEBUG] After classifier: {x.shape}")  # [B, num_classes]
         return x
+
 
 
 
@@ -333,7 +363,6 @@ def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, bs=8, de
 
         # Validation step (if val_loader is provided)
         if val_loader:
-
             val_acc, val_loss = evaluate(model, val_loader)
             print(f"Validation → Accuracy: {val_acc:.2f}%, Loss: {val_loss:.4f}")
 

@@ -259,7 +259,7 @@ All of the following functions are optional. They are provided to help you get s
 
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
 
-def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, device="cpu"):
+def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, bs=8, device="cpu"):
     """
     Trains the CNN model and saves the best version based on highest validation accuracy.
 
@@ -333,14 +333,26 @@ def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, device="
 
         # Validation step (if val_loader is provided)
         if val_loader:
+
             val_acc, val_loss = evaluate(model, val_loader)
             print(f"Validation → Accuracy: {val_acc:.2f}%, Loss: {val_loss:.4f}")
 
             # Save best model based on validation accuracy
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                torch.save(model.state_dict(), "model.pt")
+
+                host = os.uname().nodename.split(".")[0]
+                cwd = os.getcwd().split("/")[-1]         # just the last folder name (optio
+                model_pt_name = f"model_{host}__epoch_{epoch+1}_of_{num_epochs}__lr_{lr}__BS_{bs}__{cwd}__acc_{val_acc:.2f}.pt"
+
+                torch.save(model.state_dict(), model_pt_name) # torch.save(model.state_dict(), "model.pt")
                 print(f"New best model saved (Val Accuracy: {val_acc:.2f}%)")
+                print(f"NEW MODEL NAME: {model_pt_name}", flush=True)
+
+                os.system(f"cp {model_pt_name} model.pt")
+                for f in os.listdir("."):
+                    if f.startswith("model_") and f.endswith(".pt") and f != model_pt_name and f != "model.pt":
+                        os.remove(f)
 
         print()  # Newline for spacing
 
@@ -354,20 +366,28 @@ def test(model, test_loader, **kwargs):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_dir', type=str,
-                        default='welcome/to/CNN/homework',
+                        default='./data',
+                        help='Path to training data directory')
+
+    parser.add_argument('--val_dir', type=str,
+                        default='./data/val',
+                        help='Path to training data directory')
+
+    parser.add_argument('--test_dir', type=str,
+                        default='./data/test',
                         help='Path to training data directory')
 
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed for reproducibility')
 
 
-    parser.add_argument('--epochs', type=int, default=50,
+    parser.add_argument('--epochs', type=int, default=200,
                         help='Number of Epochs')
 
     parser.add_argument('--bs', type=int, default=8,
                         help='Batch Size')
 
-    parser.add_argument('--lr', type=float, default=0.001,
+    parser.add_argument('--lr', type=float, default=0.0001,
                         help='Learning Rate')
 
     return parser.parse_args()
@@ -422,7 +442,38 @@ def get_data_loaders(dataset, batch_size=8, val_split=0.2, seed=42):
     return train_loader, val_loader
 
 
-def test_training():
+
+# ################################################### #
+# ################################################### #
+def main():
+    args = parse_args()
+
+    seed = args.seed
+
+    train_dir = args.train_dir
+    val_dir = args.val_dir
+    test_dir = args.test_dir
+
+    num_epochs = args.epochs
+    lr = args.lr
+    bs= args.bs
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    print(f"seed = {seed}")
+    print(f"train_dir = {train_dir}")
+    print(f"val_dir = {val_dir}")
+    print(f"test_dir = {test_dir}")
+    print(f"num_epochs = {num_epochs}")
+    print(f"lr = {lr}")
+    print(f"bs = {bs}")
+    print (f"device = {device}")
+
+    torch.manual_seed(args.seed)
+
+    #test_dataset()
+    #test_cnn_constructor()
+    #debug_forward_pass()
+
     # Load dataset
     dataset = SUN397Dataset("./data")
     num_classes = len(dataset.class_to_idx)  # Dynamically detect number of classes
@@ -432,34 +483,18 @@ def test_training():
     val_size = len(dataset) - train_size
 
     # Optional: fix randomness for reproducibility
-    generator = torch.Generator().manual_seed(42)
+    generator = torch.Generator().manual_seed(seed)
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=bs, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=bs, shuffle=False)
 
     # Initialize model
     model = CNN(num_classes=num_classes)
 
     # Train
-    train(model, train_loader, val_loader=val_loader, num_epochs=15, lr=0.0001, device="cpu")
-
-
-# ################################################### #
-# ################################################### #
-
-def main():
-    args = parse_args()
-    torch.manual_seed(args.seed)
-
-    #test_dataset()
-
-    #test_cnn_constructor()
-
-    #debug_forward_pass()
-
-    test_training()
+    train(model, train_loader, val_loader=val_loader, num_epochs=num_epochs, lr=lr, bs=bs, device=device)
 
 if __name__ == "__main__":
     main()

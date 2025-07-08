@@ -11,6 +11,7 @@ import numpy as np
 import glob
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
 from time import time
+from sklearn.model_selection import train_test_split
 
 import torchvision
 
@@ -45,21 +46,21 @@ class SUN397Dataset(Dataset):
         for subdir in os.listdir(data_dir):
             # Like ./data/a etc
             subdir_path = os.path.join(data_dir, subdir)
-            print(f"SUBDIR: {subdir} \t {subdir_path}")
+            #print(f"SUBDIR: {subdir} \t {subdir_path}")
 
             if os.path.isdir(subdir_path):
                 for cls_name in os.listdir(subdir_path):
                     full_cls_path = os.path.join(subdir_path, cls_name) # like ./data/a/bedroom
-                    print(f"\t\tClass Name/Path {cls_name}:  {full_cls_path} ")
+                    #print(f"\t\tClass Name/Path {cls_name}:  {full_cls_path} ")
                     if os.path.isdir(full_cls_path):
                         class_folders.append(full_cls_path)
-                        print(f"\t\t\t{full_cls_path} IS a DIR")
-                        print(f"\t\t\tClass Folders: {class_folders}")
+                        #print(f"\t\t\t{full_cls_path} IS a DIR")
+                        #print(f"\t\t\tClass Folders: {class_folders}")
 
         # Extract class names from folder names and sort
         class_names = sorted([os.path.basename(path) for path in class_folders])
         self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(class_names)}
-        print(f"class_names: {class_names}")
+        #print(f"class_names: {class_names}")
 
         #  Collect all image_paths and lables by iterating through all class folders
         for cls_path in class_folders:
@@ -72,24 +73,30 @@ class SUN397Dataset(Dataset):
                     self.image_paths.append(fpath)
                     self.labels.append(label)
 
-        print(f"self.class_to_idx: {self.class_to_idx}")
+        #print(f"self.class_to_idx: {self.class_to_idx}")
 
         self.transform = transforms.Compose([
             transforms.ToTensor()
         ])
 
         # Compute per-channel mean and std
-        mean, std = self.compute_mean_std()
+        self.mean, self.std = self.compute_mean_std()
+        print(f"Mean: {self.mean}, StDev: {self.std}")
 
-        # Set final transform with normalization
-        self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=mean, std=std)
-        ])
+        if transform is not None:
+            self.transform = transform
+        else:
+            # Set final transform with normalization
+            self.transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=self.mean, std=self.std)
+            ])
 
-        print(f"Mean: {mean}, StDev: {std}")
-        pass
+
+
+    def get_mean_std(self):
+        return self.mean, self.std
 
     # ################################################### #
     # Return the size of the dataset
@@ -454,7 +461,7 @@ def debug_forward_pass():
     x = model.fc(x)
     print(f"After fc: {x.shape}")  # Expected: [1, 5]
 
-
+'''
 def get_data_loaders(dataset, batch_size=8, val_split=0.2, seed=42):
     """
     Splits the dataset into training and validation sets and returns DataLoaders.
@@ -469,6 +476,7 @@ def get_data_loaders(dataset, batch_size=8, val_split=0.2, seed=42):
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader
+'''
 
 
 
@@ -480,8 +488,8 @@ def main():
     seed = args.seed
 
     train_dir = args.train_dir
-    val_dir = args.val_dir
-    test_dir = args.test_dir
+    #val_dir = args.val_dir
+    #test_dir = args.test_dir
 
     num_epochs = args.epochs
     lr = args.lr
@@ -490,8 +498,8 @@ def main():
 
     print(f"seed = {seed}")
     print(f"train_dir = {train_dir}")
-    print(f"val_dir = {val_dir}")
-    print(f"test_dir = {test_dir}")
+    #print(f"val_dir = {val_dir}")
+    #print(f"test_dir = {test_dir}")
     print(f"num_epochs = {num_epochs}")
     print(f"lr = {lr}")
     print(f"bs = {bs}")
@@ -505,19 +513,52 @@ def main():
 
     # Load dataset
     dataset = SUN397Dataset("./data")
+    print(f"\nHere 1")
+    mean, std = dataset.get_mean_std()
     num_classes = len(dataset.class_to_idx)  # Dynamically detect number of classes
 
     # Split into train and val (80/20 split)
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
+    #train_size = int(0.8 * len(dataset))
+    #val_size = len(dataset) - train_size
 
     # Optional: fix randomness for reproducibility
     generator = torch.Generator().manual_seed(seed)
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+    indices = list(range(len(dataset)))
+    labels = dataset.labels
 
-    # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=bs, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=bs, shuffle=False)
+    train_indices, val_indices =  train_test_split(indices, test_size=0.2, stratify=labels, random_state=seed)
+
+    train_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(10),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std)
+        ])
+
+    val_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std)
+        ])
+
+    print(f"\nHere 2")
+
+    train_dataset = SUN397Dataset("./data", transform=train_transform)
+    print(f"\nHere 3")
+
+    val_dataset = SUN397Dataset("./data", transform=val_transform)
+    print(f"\nHere 4")
+
+    train_data = torch.utils.data.Subset(train_dataset, train_indices)
+    val_data = torch.utils.data.Subset(val_dataset, val_indices)
+    #train_data, val_data = random_split(dataset, [train_size, val_size], generator=generator)
+
+    # Create DataLoadersa
+
+    train_loader = DataLoader(train_data, batch_size=bs, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=bs, shuffle=False)
 
     # Initialize model
     model = CNN(num_classes=num_classes)

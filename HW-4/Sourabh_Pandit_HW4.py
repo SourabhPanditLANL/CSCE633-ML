@@ -46,21 +46,16 @@ class SUN397Dataset(Dataset):
         for subdir in os.listdir(data_dir):
             # Like ./data/a etc
             subdir_path = os.path.join(data_dir, subdir)
-            #print(f"SUBDIR: {subdir} \t {subdir_path}")
 
             if os.path.isdir(subdir_path):
                 for cls_name in os.listdir(subdir_path):
                     full_cls_path = os.path.join(subdir_path, cls_name) # like ./data/a/bedroom
-                    #print(f"\t\tClass Name/Path {cls_name}:  {full_cls_path} ")
                     if os.path.isdir(full_cls_path):
                         class_folders.append(full_cls_path)
-                        #print(f"\t\t\t{full_cls_path} IS a DIR")
-                        #print(f"\t\t\tClass Folders: {class_folders}")
 
         # Extract class names from folder names and sort
         class_names = sorted([os.path.basename(path) for path in class_folders])
         self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(class_names)}
-        #print(f"class_names: {class_names}")
 
         #  Collect all image_paths and lables by iterating through all class folders
         for cls_path in class_folders:
@@ -72,8 +67,6 @@ class SUN397Dataset(Dataset):
                     fpath = os.path.join(cls_path, fname)
                     self.image_paths.append(fpath)
                     self.labels.append(label)
-
-        #print(f"self.class_to_idx: {self.class_to_idx}")
 
         self.transform = transforms.Compose([
             transforms.ToTensor()
@@ -148,7 +141,6 @@ class SUN397Dataset(Dataset):
         # Temporarily use basic transform without normalization
         original_transform = self.transform
         self.transform = transforms.Compose([
-            #TODO transforms.Resize((224, 224)),
             transforms.ToTensor()
         ])
 
@@ -179,7 +171,6 @@ class SUN397Dataset(Dataset):
         self.transform = original_transform
 
         return mean.tolist(), std.tolist()
-
 
 
 class CNN(nn.Module):
@@ -255,21 +246,14 @@ class CNN(nn.Module):
         Returns:
             Tensor: Output of the model.
         """
-        #print(f"[DEBUG] Input: {x.shape}")           # [B, 3, 224, 224]
         x = self.conv1(x)
-        #print(f"[DEBUG] After conv1: {x.shape}")     # [B, 64, 112, 112]
         x = self.conv2(x)
-        #print(f"[DEBUG] After conv2: {x.shape}")     # [B, 128, 56, 56]
         x = self.conv3(x)
-        #print(f"[DEBUG] After conv3: {x.shape}")     # [B, 256, 28, 28]
         x = self.conv4(x)
-        #print(f"[DEBUG] After conv4: {x.shape}")     # [B, 512, 8, 8]
 
         x = x.view(x.size(0), -1)  # Flatten
-        #print(f"[DEBUG] After flatten: {x.shape}")   # [B, 32768]
 
         x = self.classifier(x)
-        #print(f"[DEBUG] After classifier: {x.shape}")  # [B, num_classes]
         return x
 
 
@@ -293,8 +277,6 @@ def calculate_mean_std(**kwargs):
 '''
 All of the following functions are optional. They are provided to help you get started.
 '''
-
-from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
 
 def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, bs=8, device="cpu"):
     """
@@ -368,7 +350,7 @@ def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, bs=8, de
         avg_loss = running_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{num_epochs}] completed. Avg Train Loss: {avg_loss:.4f}")
 
-        # Validation step (if val_loader is provided)
+        # Validation step
         if val_loader:
             val_acc, val_loss = evaluate(model, val_loader)
             print(f"Validation → Accuracy: {val_acc:.2f}%, Loss: {val_loss:.4f}")
@@ -378,7 +360,7 @@ def train(model, train_loader, val_loader=None, num_epochs=5, lr=0.001, bs=8, de
                 best_val_acc = val_acc
 
                 host = os.uname().nodename.split(".")[0]
-                cwd = os.getcwd().split("/")[-1]         # just the last folder name (optio
+                cwd = os.getcwd().split("/")[-1]         # just the last folder name
                 model_pt_name = f"model_{host}__epoch_{epoch+1}_of_{num_epochs}__lr_{lr}__BS_{bs}__{cwd}__acc_{val_acc:.2f}.pt"
 
                 torch.save(model.state_dict(), model_pt_name) # torch.save(model.state_dict(), "model.pt")
@@ -401,32 +383,13 @@ def test(model, test_loader, **kwargs):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--train_dir', type=str,
-                        default='./data',
-                        help='Path to training data directory')
-
-    parser.add_argument('--val_dir', type=str,
-                        default='./data/val',
-                        help='Path to training data directory')
-
-    parser.add_argument('--test_dir', type=str,
-                        default='./data/test',
-                        help='Path to training data directory')
-
-    parser.add_argument('--seed', type=int, default=42,
-                        help='Random seed for reproducibility')
-
-
-    parser.add_argument('--epochs', type=int, default=200,
-                        help='Number of Epochs')
-
-    parser.add_argument('--bs', type=int, default=8,
-                        help='Batch Size')
-
-    parser.add_argument('--lr', type=float, default=0.0001,
-                        help='Learning Rate')
-
+    parser.add_argument('--train_dir', type=str, default='./data', help='Path to training data directory')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--epochs', type=int, default=200, help='Number of Epochs')
+    parser.add_argument('--bs', type=int, default=8, help='Batch Size')
+    parser.add_argument('--lr', type=float, default=0.0001, help='Learning Rate')
     return parser.parse_args()
+
 
 def test_dataset():
 
@@ -436,47 +399,29 @@ def test_dataset():
     print(f"Exit Test()")
 
 def test_cnn_constructor():
-    model = CNN(num_classes=4)  # Adjust to your dataset's class count
+    model = CNN(num_classes=4)
     print(model)
 
-    # Count total parameters
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total parameters: {total_params}")
 
 def debug_forward_pass():
-    model = CNN(num_classes=4)  # Adjust for your dataset
-    x = torch.randn(1, 3, 224, 224)  # A single dummy image
-
+    model = CNN(num_classes=4)
+    x = torch.randn(1, 3, 224, 224)
     print(f"Input: {x.shape}")
 
     x = model.conv1(x)
-    print(f"After conv1: {x.shape}")  # Expected: [1, 16, 112, 112]
+    print(f"After conv1: {x.shape}")
 
     x = model.conv2(x)
-    print(f"After conv2: {x.shape}")  # Expected: [1, 32, 56, 56]
+    print(f"After conv2: {x.shape}")
 
     x = x.view(x.size(0), -1)
-    print(f"After flatten: {x.shape}")  # Expected: [1, 100352]
+    print(f"After flatten: {x.shape}")
 
     x = model.fc(x)
-    print(f"After fc: {x.shape}")  # Expected: [1, 5]
+    print(f"After fc: {x.shape}")
 
-'''
-def get_data_loaders(dataset, batch_size=8, val_split=0.2, seed=42):
-    """
-    Splits the dataset into training and validation sets and returns DataLoaders.
-    """
-    val_size = int(len(dataset) * val_split)
-    train_size = len(dataset) - val_size
-
-    generator = torch.Generator().manual_seed(seed)
-    train_ds, val_ds = random_split(dataset, [train_size, val_size], generator=generator)
-
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-
-    return train_loader, val_loader
-'''
 
 
 
@@ -486,42 +431,29 @@ def main():
     args = parse_args()
 
     seed = args.seed
-
     train_dir = args.train_dir
-    #val_dir = args.val_dir
-    #test_dir = args.test_dir
-
     num_epochs = args.epochs
     lr = args.lr
     bs= args.bs
+
+    # Do we have a GPU to use ?
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     print(f"seed = {seed}")
     print(f"train_dir = {train_dir}")
-    #print(f"val_dir = {val_dir}")
-    #print(f"test_dir = {test_dir}")
     print(f"num_epochs = {num_epochs}")
-    print(f"lr = {lr}")
-    print(f"bs = {bs}")
+    print(f"learning_rate = {lr}")
+    print(f"batch_size = {bs}")
     print (f"device = {device}")
 
     torch.manual_seed(args.seed)
-
-    #test_dataset()
-    #test_cnn_constructor()
-    #debug_forward_pass()
 
     # Load dataset
     dataset = SUN397Dataset("./data")
     print(f"\nHere 1")
     mean, std = dataset.get_mean_std()
-    num_classes = len(dataset.class_to_idx)  # Dynamically detect number of classes
+    num_classes = len(dataset.class_to_idx)
 
-    # Split into train and val (80/20 split)
-    #train_size = int(0.8 * len(dataset))
-    #val_size = len(dataset) - train_size
-
-    # Optional: fix randomness for reproducibility
     generator = torch.Generator().manual_seed(seed)
     indices = list(range(len(dataset)))
     labels = dataset.labels
@@ -553,17 +485,11 @@ def main():
 
     train_data = torch.utils.data.Subset(train_dataset, train_indices)
     val_data = torch.utils.data.Subset(val_dataset, val_indices)
-    #train_data, val_data = random_split(dataset, [train_size, val_size], generator=generator)
-
-    # Create DataLoadersa
 
     train_loader = DataLoader(train_data, batch_size=bs, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=bs, shuffle=False)
 
-    # Initialize model
     model = CNN(num_classes=num_classes)
-
-    # Train
     train(model, train_loader, val_loader=val_loader, num_epochs=num_epochs, lr=lr, bs=bs, device=device)
 
 if __name__ == "__main__":

@@ -192,32 +192,32 @@ class CNN(nn.Module):
 
         # First convolutional block
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)     # Output: 64 x 112 x 112
         )
 
         # Second convolutional block
         self.conv2 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)     # Output: 128 x 56 x 56
         )
 
         # Third convolutional block
         self.conv3 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)     # Output: 256 x 28 x 28
         )
 
         # Fourth convolutional block
         self.conv4 = nn.Sequential(
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
             nn.AdaptiveAvgPool2d((8, 8))    # Output: 512 x 8 x 8
@@ -226,10 +226,10 @@ class CNN(nn.Module):
         # Fully connected layer (flatten first)
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(512 * 8 * 8, 512),
+            nn.Linear(256 * 8 * 8, 256),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(512, num_classes)
+            nn.Linear(256, num_classes)
         )
 
 
@@ -390,18 +390,20 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning Rate')
     return parser.parse_args()
 
+    parser.add_argument('--lr', type=float, default=0.0001,
+                        help='Learning Rate')
+
+    return parser.parse_args()
 
 def test_dataset():
 
-    print(f"Enter Test()")
+    print(f"Enter test_dataset()")
     ds  = SUN397Dataset("./data")
     calculate_mean_std()
-    print(f"Exit Test()")
+    print(f"Exit test_dataset()")
 
 def test_cnn_constructor():
     model = CNN(num_classes=4)
-    print(model)
-
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total parameters: {total_params}")
 
@@ -450,7 +452,6 @@ def main():
 
     # Load dataset
     dataset = SUN397Dataset("./data")
-    print(f"\nHere 1")
     mean, std = dataset.get_mean_std()
     num_classes = len(dataset.class_to_idx)
 
@@ -464,24 +465,12 @@ def main():
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(10),
-        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)
         ])
-
-    val_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std)
-        ])
-
-    print(f"\nHere 2")
 
     train_dataset = SUN397Dataset("./data", transform=train_transform)
-    print(f"\nHere 3")
-
-    val_dataset = SUN397Dataset("./data", transform=val_transform)
-    print(f"\nHere 4")
+    val_dataset = SUN397Dataset("./data", transform=None)
 
     train_data = torch.utils.data.Subset(train_dataset, train_indices)
     val_data = torch.utils.data.Subset(val_dataset, val_indices)
